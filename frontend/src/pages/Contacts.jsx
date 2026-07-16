@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import api from '../api';
 import Sidebar from '../components/Sidebar';
 import { Mail, Phone, Tag, Upload, Plus, UserPlus } from 'lucide-react';
 
@@ -17,7 +17,7 @@ export default function Contacts() {
 
   const fetchContacts = async () => {
     try {
-      const res = await axios.get('http://localhost:3000/api/contacts');
+      const res = await api.get('/api/contacts');
       setContacts(res.data);
     } catch (error) {
       console.error('Failed to fetch contacts:', error);
@@ -39,7 +39,7 @@ export default function Contacts() {
 
     setUploading(true);
     try {
-      const res = await axios.post('http://localhost:3000/api/contacts/import', formData, {
+      const res = await api.post('/api/contacts/import', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       alert(`Import complete! Added: ${res.data.importedCount}, Skipped: ${res.data.skippedCount}`);
@@ -56,7 +56,7 @@ export default function Contacts() {
   const submitFamilyMember = async (e) => {
     e.preventDefault();
     try {
-      await axios.post(`http://localhost:3000/api/contacts/${addingFamilyFor}/family`, familyForm);
+      await api.post(`/api/contacts/${addingFamilyFor}/family`, familyForm);
       setAddingFamilyFor(null);
       setFamilyForm({ relation: 'spouse', full_name: '', date_of_birth: '', date_of_death: '' });
       fetchContacts();

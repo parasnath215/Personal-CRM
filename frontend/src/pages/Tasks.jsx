@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../api';
 import Sidebar from '../components/Sidebar';
 import { Calendar, CheckCircle, Clock, XCircle, Search } from 'lucide-react';
 
@@ -10,7 +10,7 @@ export default function Tasks() {
 
   const fetchTasks = async () => {
     try {
-      const res = await axios.get('http://localhost:3000/api/tasks/all');
+      const res = await api.get('/api/tasks/all');
       setTasks(res.data);
     } catch (error) {
       console.error('Failed to fetch all tasks:', error);
@@ -25,7 +25,7 @@ export default function Tasks() {
 
   const handleUpdateStatus = async (id, status) => {
     try {
-      await axios.patch(`http://localhost:3000/api/tasks/${id}/status`, { status });
+      await api.patch(`/api/tasks/${id}/status`, { status });
       fetchTasks();
     } catch (error) {
       console.error('Error updating task', error);

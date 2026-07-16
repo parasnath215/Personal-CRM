@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../api';
 import { Target, TrendingUp, Plus } from 'lucide-react';
 
 export default function GoalsWidget() {
@@ -8,7 +8,7 @@ export default function GoalsWidget() {
 
   const fetchGoals = async () => {
     try {
-      const res = await axios.get('http://localhost:3000/api/goals');
+      const res = await api.get('/api/goals');
       setGoals(res.data);
     } catch (error) {
       console.error('Error fetching goals', error);

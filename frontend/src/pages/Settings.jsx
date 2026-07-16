@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../api';
 import Sidebar from '../components/Sidebar';
 import { useAuth } from '../context/AuthContext';
 import { Shield, UserPlus, Users } from 'lucide-react';
@@ -12,7 +12,7 @@ export default function Settings() {
 
   const fetchUsers = async () => {
     try {
-      const res = await axios.get('http://localhost:3000/api/settings/users');
+      const res = await api.get('/api/settings/users');
       setUsers(res.data);
     } catch (error) {
       console.error('Failed to fetch users', error);
@@ -32,7 +32,7 @@ export default function Settings() {
   const handleCreateUser = async (e) => {
     e.preventDefault();
     try {
-      await axios.post('http://localhost:3000/api/settings/users', form);
+      await api.post('/api/settings/users', form);
       setForm({ name: '', email: '', password: '', role: 'hotel_staff' });
       fetchUsers();
       alert('User created successfully');

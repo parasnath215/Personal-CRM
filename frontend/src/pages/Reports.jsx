@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../api';
 import Sidebar from '../components/Sidebar';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -15,8 +15,8 @@ export default function Reports() {
   const fetchData = async () => {
     try {
       const [reportsRes, expensesRes] = await Promise.all([
-        axios.get('http://localhost:3000/api/reports/expenses'),
-        axios.get('http://localhost:3000/api/expenses')
+        api.get('/api/reports/expenses'),
+        api.get('/api/expenses')
       ]);
       setChartData(reportsRes.data);
       setExpenses(expensesRes.data);
@@ -34,7 +34,7 @@ export default function Reports() {
   const handleAddExpense = async (e) => {
     e.preventDefault();
     try {
-      await axios.post('http://localhost:3000/api/expenses', form);
+      await api.post('/api/expenses', form);
       setForm({ ...form, amount: '', note: '' });
       fetchData();
     } catch (error) {

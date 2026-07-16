@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../api';
 import Sidebar from '../components/Sidebar';
 import { Bed, Check } from 'lucide-react';
 
@@ -10,7 +10,7 @@ export default function Hotel() {
 
   const fetchGuests = async () => {
     try {
-      const res = await axios.get('http://localhost:3000/api/hotel/guests');
+      const res = await api.get('/api/hotel/guests');
       setGuests(res.data);
     } catch (error) {
       console.error('Failed to fetch guests', error);
@@ -26,7 +26,7 @@ export default function Hotel() {
   const handleCreateGuest = async (e) => {
     e.preventDefault();
     try {
-      await axios.post('http://localhost:3000/api/hotel/guests', form);
+      await api.post('/api/hotel/guests', form);
       setForm({ name: '', phone: '', room_number: '', check_in: new Date().toISOString().split('T')[0] });
       fetchGuests();
     } catch (error) {

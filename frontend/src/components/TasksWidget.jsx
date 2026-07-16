@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../api';
 import { CheckCircle, XCircle, Clock, CalendarDays, Plus } from 'lucide-react';
 
 export default function TasksWidget() {
@@ -9,7 +9,7 @@ export default function TasksWidget() {
 
   const fetchTasks = async () => {
     try {
-      const res = await axios.get('http://localhost:3000/api/tasks');
+      const res = await api.get('/api/tasks');
       setTasks(res.data);
     } catch (error) {
       console.error('Error fetching tasks', error);
@@ -27,7 +27,7 @@ export default function TasksWidget() {
     if (!newTaskTitle.trim()) return;
 
     try {
-      await axios.post('http://localhost:3000/api/tasks', {
+      await api.post('/api/tasks', {
         title: newTaskTitle,
         event_date: new Date().toISOString()
       });
@@ -40,7 +40,7 @@ export default function TasksWidget() {
 
   const handleUpdateStatus = async (id, status, carried_forward_to = null) => {
     try {
-      await axios.patch(`http://localhost:3000/api/tasks/${id}/status`, {
+      await api.patch(`/api/tasks/${id}/status`, {
         status,
         carried_forward_to
       });
