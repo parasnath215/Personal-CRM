@@ -1,0 +1,158 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int           @id @default(autoincrement())
+  email        String        @unique
+  password     String
+  name         String
+  role         String        @default("admin") // admin, hotel_staff, accountant
+  created_at   DateTime      @default(now())
+  
+  expenses     Expense[]
+  hotel_guests HotelGuest[]
+  tasks        Task[]
+}
+
+model Contact {
+  id            Int             @id @default(autoincrement())
+  name          String
+  phone         String          @unique // E.164
+  email         String?
+  tags          String?
+  created_at    DateTime        @default(now())
+  
+  familyMembers FamilyMember[]
+  notifications DashboardNotification[]
+}
+
+model FamilyMember {
+  id            Int       @id @default(autoincrement())
+  contact_id    Int
+  relation      String    // self/father/mother/spouse/child
+  full_name     String
+  date_of_birth DateTime?
+  date_of_death DateTime?
+  
+  contact       Contact   @relation(fields: [contact_id], references: [id], onDelete: Cascade)
+}
+
+model Bill {
+  id              Int       @id @default(autoincrement())
+  title           String
+  amount          Float
+  category        String?
+  recurrence_type String    // monthly/quarterly/yearly/one-time
+  due_day         Int?      // e.g., 5th of month
+  next_due_date   DateTime
+  is_active       Boolean   @default(true)
+}
+
+model Rental {
+  id             Int       @id @default(autoincrement())
+  client_name    String
+  client_phone   String
+  property_name  String
+  rent_amount    Float
+  due_day        Int
+  next_due_date  DateTime
+  
+  payments       RentPayment[]
+}
+
+model RentPayment {
+  id             Int      @id @default(autoincrement())
+  rental_id      Int
+  amount_paid    Float
+  paid_on        DateTime
+  status         String   // paid/partial/overdue
+  
+  rental         Rental   @relation(fields: [rental_id], references: [id], onDelete: Cascade)
+}
+
+model TaxReminder {
+  id                 Int      @id @default(autoincrement())
+  tax_type           String
+  due_date           DateTime
+  reminder_lead_days Int
+}
+
+model Expense {
+  id           Int      @id @default(autoincrement())
+  amount       Float
+  category     String
+  note         String?
+  spent_on     DateTime
+  payment_mode String?
+  created_by   Int
+  
+  user         User     @relation(fields: [created_by], references: [id])
+}
+
+model HotelGuest {
+  id              Int      @id @default(autoincrement())
+  name            String
+  phone           String
+  id_proof_type   String?
+  id_proof_number String?
+  check_in        DateTime
+  check_out       DateTime?
+  room_number     String
+  entered_by      Int
+  created_at      DateTime @default(now())
+  
+  user            User     @relation(fields: [entered_by], references: [id])
+}
+
+model Goal {
+  id            Int      @id @default(autoincrement())
+  title         String
+  target_amount Float
+  target_date   DateTime
+  category      String?
+  
+  progress      GoalProgress[]
+}
+
+model GoalProgress {
+  id              Int      @id @default(autoincrement())
+  goal_id         Int
+  month           String   // YYYY-MM
+  amount_achieved Float
+  note            String?
+  
+  goal            Goal     @relation(fields: [goal_id], references: [id], onDelete: Cascade)
+}
+
+model Task {
+  id                 Int       @id @default(autoincrement())
+  title              String
+  description        String?
+  event_date         DateTime
+  status             String    // pending/done/cancelled/carried_forward
+  carried_forward_to DateTime?
+  created_by         Int
+  created_at         DateTime  @default(now())
+  
+  user               User      @relation(fields: [created_by], references: [id])
+}
+
+model DashboardNotification {
+  id          Int      @id @default(autoincrement())
+  type        String   // e.g., 'death_anniversary', 'birthday', 'bill_due'
+  contact_id  Int?
+  message     String
+  is_read     Boolean  @default(false)
+  created_at  DateTime @default(now())
+  
+  contact     Contact? @relation(fields: [contact_id], references: [id])
+}
