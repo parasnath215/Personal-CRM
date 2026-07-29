@@ -8,3 +8,5 @@ dev.db
 *.db
 *.db-journal
 uploads/
+.wwebjs_auth
+.wwebjs_cache

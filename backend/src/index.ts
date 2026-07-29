@@ -9,6 +9,10 @@ import reportsRoutes from './routes/reports';
 import settingsRoutes from './routes/settings';
 import goalsRoutes from './routes/goals';
 import hotelRoutes from './routes/hotel';
+import whatsappRoutes from './routes/whatsapp';
+import whatsappService from './services/whatsapp';
+import path from 'path';
+import fs from 'fs';
 import './cron'; // Initialize background cron jobs
 
 dotenv.config();
@@ -25,9 +29,17 @@ app.use('/api/reports', reportsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/goals', goalsRoutes);
 app.use('/api/hotel', hotelRoutes);
+app.use('/api/whatsapp', whatsappRoutes);
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  
+  // Auto-initialize WhatsApp if a saved session is found
+  const sessionPath = path.join(__dirname, '../.wwebjs_auth/session-crm-session');
+  if (fs.existsSync(sessionPath)) {
+    console.log('Saved WhatsApp session found. Auto-initializing WhatsApp client...');
+    whatsappService.initialize();
+  }
 });
