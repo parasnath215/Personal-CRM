@@ -5,12 +5,17 @@ import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recha
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
+const getTodayStr = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
+
 export default function Reports() {
   const [chartData, setChartData] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [form, setForm] = useState({ amount: '', category: 'Food', note: '', spent_on: new Date().toISOString().split('T')[0], payment_mode: 'Cash' });
+  const [form, setForm] = useState({ amount: '', category: 'Food', note: '', spent_on: getTodayStr(), payment_mode: 'Cash' });
 
   const fetchData = async () => {
     try {
@@ -35,7 +40,7 @@ export default function Reports() {
     e.preventDefault();
     try {
       await api.post('/api/expenses', form);
-      setForm({ ...form, amount: '', note: '' });
+      setForm({ ...form, amount: '', note: '', spent_on: getTodayStr() });
       fetchData();
     } catch (error) {
       console.error('Failed to add expense', error);

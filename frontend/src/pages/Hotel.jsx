@@ -3,10 +3,15 @@ import api from '../api';
 import Sidebar from '../components/Sidebar';
 import { Bed, Check } from 'lucide-react';
 
+const getTodayStr = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
+
 export default function Hotel() {
   const [guests, setGuests] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ name: '', phone: '', room_number: '', check_in: new Date().toISOString().split('T')[0] });
+  const [form, setForm] = useState({ name: '', phone: '', room_number: '', check_in: getTodayStr() });
 
   const fetchGuests = async () => {
     try {
@@ -27,7 +32,7 @@ export default function Hotel() {
     e.preventDefault();
     try {
       await api.post('/api/hotel/guests', form);
-      setForm({ name: '', phone: '', room_number: '', check_in: new Date().toISOString().split('T')[0] });
+      setForm({ name: '', phone: '', room_number: '', check_in: getTodayStr() });
       fetchGuests();
     } catch (error) {
       console.error('Failed to create guest', error);

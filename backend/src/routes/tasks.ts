@@ -20,6 +20,37 @@ router.get('/all', authenticate, async (req, res) => {
   }
 });
 
+// Helper to parse date string into UTC startOfDay and endOfDay
+function parseTargetDateBounds(dateInput?: string): { startOfDay: Date; endOfDay: Date } {
+  let year: number;
+  let month: number;
+  let day: number;
+
+  if (dateInput) {
+    const dateStr = dateInput.includes('T') ? dateInput.split('T')[0]! : dateInput;
+    const parts = dateStr.split('-');
+    if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+      year = parseInt(parts[0], 10);
+      month = parseInt(parts[1], 10) - 1;
+      day = parseInt(parts[2], 10);
+    } else {
+      const d = new Date(dateInput);
+      year = d.getFullYear();
+      month = d.getMonth();
+      day = d.getDate();
+    }
+  } else {
+    const now = new Date();
+    year = now.getFullYear();
+    month = now.getMonth();
+    day = now.getDate();
+  }
+
+  const startOfDay = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
+  const endOfDay = new Date(Date.UTC(year, month, day, 23, 59, 59, 999));
+  return { startOfDay, endOfDay };
+}
+
 // Get task calendar summary counts for a given month/year
 router.get('/calendar-summary', authenticate, async (req, res) => {
   try {
@@ -27,7 +58,7 @@ router.get('/calendar-summary', authenticate, async (req, res) => {
     const year = parseInt(req.query.year as string) || new Date().getFullYear();
     const month = parseInt(req.query.month as string) || (new Date().getMonth() + 1); // 1-indexed
 
-    // Start and end of month in UTC/Local
+    // Start and end of month in UTC
     const startOfMonth = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
     const endOfMonth = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
 
@@ -51,12 +82,15 @@ router.get('/calendar-summary', authenticate, async (req, res) => {
       }
     });
 
-    // Group task count by YYYY-MM-DD
+    // Group task count by YYYY-MM-DD (UTC date key)
     const summary: Record<string, { total: number; pending: number; done: number; carried: number }> = {};
 
     tasks.forEach(task => {
       const activeDate = task.carried_forward_to || task.event_date;
-      const dateKey = activeDate.toISOString().split('T')[0];
+      const y = activeDate.getUTCFullYear();
+      const m = String(activeDate.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(activeDate.getUTCDate()).padStart(2, '0');
+      const dateKey = `${y}-${m}-${d}`;
 
       if (!summary[dateKey]) {
         summary[dateKey] = { total: 0, pending: 0, done: 0, carried: 0 };
@@ -83,13 +117,7 @@ router.get('/calendar-summary', authenticate, async (req, res) => {
 router.get('/', authenticate, async (req, res) => {
   try {
     const userId = (req as any).user.userId;
-    const targetDate = req.query.date ? new Date(req.query.date as string) : new Date();
-
-    const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
+    const { startOfDay, endOfDay } = parseTargetDateBounds(req.query.date as string);
 
     const tasks = await prisma.task.findMany({
       where: {
@@ -129,11 +157,28 @@ router.post('/', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Task title is required' });
     }
 
+    let parsedEventDate: Date;
+    if (event_date) {
+      const dateStr = typeof event_date === 'string' && event_date.includes('T') ? event_date.split('T')[0]! : String(event_date);
+      const parts = dateStr.split('-');
+      if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const d = parseInt(parts[2], 10);
+        parsedEventDate = new Date(Date.UTC(y, m, d, 12, 0, 0));
+      } else {
+        parsedEventDate = new Date(event_date);
+      }
+    } else {
+      const now = new Date();
+      parsedEventDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0));
+    }
+
     const task = await prisma.task.create({
       data: {
         title: title.trim(),
         description: description?.trim() || null,
-        event_date: event_date ? new Date(event_date) : new Date(),
+        event_date: parsedEventDate,
         status: 'pending',
         created_by: userId
       }
@@ -150,7 +195,7 @@ router.post('/', authenticate, async (req, res) => {
 router.put('/:id', authenticate, async (req, res) => {
   try {
     const userId = (req as any).user.userId;
-    const taskId = parseInt(req.params.id);
+    const taskId = parseInt(req.params.id as string);
     const { title, description, event_date, status, carried_forward_to } = req.body;
 
     const existingTask = await prisma.task.findUnique({ where: { id: taskId } });
@@ -182,7 +227,7 @@ router.put('/:id', authenticate, async (req, res) => {
 router.patch('/:id/status', authenticate, async (req, res) => {
   try {
     const userId = (req as any).user.userId;
-    const taskId = parseInt(req.params.id);
+    const taskId = parseInt(req.params.id as string);
     const { status, carried_forward_to } = req.body;
 
     // Verify ownership
@@ -212,7 +257,7 @@ router.patch('/:id/status', authenticate, async (req, res) => {
 router.delete('/:id', authenticate, async (req, res) => {
   try {
     const userId = (req as any).user.userId;
-    const taskId = parseInt(req.params.id);
+    const taskId = parseInt(req.params.id as string);
 
     const task = await prisma.task.findUnique({ where: { id: taskId } });
     if (!task || task.created_by !== userId) {

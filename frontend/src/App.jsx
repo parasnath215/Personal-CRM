@@ -4,11 +4,11 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Tasks from './pages/Tasks';
+import Goals from './pages/Goals';
 import Reports from './pages/Reports';
 import Contacts from './pages/Contacts';
 import Settings from './pages/Settings';
 import Hotel from './pages/Hotel';
-import PlaceholderPage from './pages/PlaceholderPage';
 
 function App() {
   return (
@@ -22,6 +22,7 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/contacts" element={<Contacts />} />
             <Route path="/tasks" element={<Tasks />} />
+            <Route path="/goals" element={<Goals />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/hotel" element={<Hotel />} />

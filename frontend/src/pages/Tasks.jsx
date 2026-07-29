@@ -13,6 +13,17 @@ export default function Tasks() {
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('');
 
+  const getTodayStr = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  };
+
+  const getTomorrowStr = () => {
+    const tmrw = new Date();
+    tmrw.setDate(tmrw.getDate() + 1);
+    return `${tmrw.getFullYear()}-${String(tmrw.getMonth() + 1).padStart(2, '0')}-${String(tmrw.getDate()).padStart(2, '0')}`;
+  };
+
   // Modals state
   const [editingTask, setEditingTask] = useState(null);
   const [carryForwardTask, setCarryForwardTask] = useState(null);
@@ -22,7 +33,7 @@ export default function Tasks() {
   // New task form state
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
-  const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newDate, setNewDate] = useState(getTodayStr());
 
   const fetchTasks = async () => {
     try {
@@ -57,7 +68,7 @@ export default function Tasks() {
       await api.post('/api/tasks', {
         title: newTitle,
         description: newDesc,
-        event_date: newDate ? new Date(newDate).toISOString() : new Date().toISOString()
+        event_date: newDate || getTodayStr()
       });
       setNewTitle('');
       setNewDesc('');
@@ -85,8 +96,8 @@ export default function Tasks() {
 
   const handleExecuteCarryForward = async () => {
     if (!carryForwardTask) return;
-    const target = customCarryDate ? new Date(customCarryDate) : new Date(Date.now() + 86400000);
-    await handleUpdateStatus(carryForwardTask.id, 'carried_forward', target.toISOString());
+    const target = customCarryDate || getTomorrowStr();
+    await handleUpdateStatus(carryForwardTask.id, 'carried_forward', target);
     setCarryForwardTask(null);
     setCustomCarryDate('');
   };
@@ -333,9 +344,7 @@ export default function Tasks() {
                             <button
                               onClick={() => {
                                 setCarryForwardTask(task);
-                                const tmrw = new Date();
-                                tmrw.setDate(tmrw.getDate() + 1);
-                                setCustomCarryDate(tmrw.toISOString().split('T')[0]);
+                                setCustomCarryDate(getTomorrowStr());
                               }}
                               className="px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600 text-amber-300 hover:text-white rounded-lg text-xs font-semibold transition-colors border border-amber-500/30 flex items-center gap-1"
                             >

@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { Home, Users, FileText, Settings, LogOut, CheckSquare, PieChart, Building } from 'lucide-react';
+import { Home, Users, Settings, LogOut, CheckSquare, PieChart, Building, Target } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function Sidebar() {
@@ -9,6 +9,7 @@ export default function Sidebar() {
     { name: 'Dashboard', icon: Home, path: '/' },
     { name: 'Contacts', icon: Users, path: '/contacts' },
     { name: 'Tasks', icon: CheckSquare, path: '/tasks' },
+    { name: 'Long-Term Goals', icon: Target, path: '/goals' },
     { name: 'Reports & Expenses', path: '/reports', icon: PieChart },
     { name: 'Hotel Guests', path: '/hotel', icon: Building },
     { name: 'Settings', path: '/settings', icon: Settings },

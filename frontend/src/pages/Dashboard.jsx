@@ -3,9 +3,9 @@ import api from '../api';
 import Sidebar from '../components/Sidebar';
 import CalendarWidget from '../components/CalendarWidget';
 import TasksWidget from '../components/TasksWidget';
-import GoalsWidget from '../components/GoalsWidget';
+import NextDayTasksWidget from '../components/NextDayTasksWidget';
 import { 
-  CheckCircle2, Clock, Calendar, ArrowUpRight, AlertCircle, Sparkles 
+  CheckCircle2, Clock, Calendar, ArrowUpRight, Sparkles 
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -22,8 +22,9 @@ export default function Dashboard() {
 
   const fetchDailyStats = async () => {
     try {
-      const todayIso = new Date().toISOString();
-      const resToday = await api.get(`/api/tasks?date=${todayIso}`);
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const resToday = await api.get(`/api/tasks?date=${todayStr}`);
       const todayTasks = resToday.data || [];
 
       const resAll = await api.get('/api/tasks/all');
@@ -65,7 +66,7 @@ export default function Dashboard() {
               Dashboard Overview <Sparkles className="w-6 h-6 text-amber-400" />
             </h2>
             <p className="text-slate-400 text-sm mt-1">
-              Organize everyday tasks, track schedules, and reach long-term goals.
+              Organize everyday tasks, preview tomorrow's schedule, and track performance.
             </p>
           </div>
 
@@ -140,11 +141,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Bottom Section: Goals Overview */}
-        <div className="bg-slate-800/80 rounded-xl p-6 shadow-md border border-slate-700">
-          <h3 className="text-lg font-bold text-white mb-4">Long-Term Goals & Milestones</h3>
-          <GoalsWidget />
-        </div>
+        {/* Bottom Section: Tomorrow's Next Day Tasks */}
+        <NextDayTasksWidget onTasksUpdated={handleTasksUpdated} />
       </main>
     </div>
   );

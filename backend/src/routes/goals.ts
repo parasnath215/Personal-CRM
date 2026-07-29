@@ -42,7 +42,7 @@ router.post('/', authenticate, async (req, res) => {
 // Add progress
 router.post('/:id/progress', authenticate, async (req, res) => {
   try {
-    const goalId = parseInt(req.params.id);
+    const goalId = parseInt(req.params.id as string);
     const { month, amount_achieved, note } = req.body;
     
     const progress = await prisma.goalProgress.create({

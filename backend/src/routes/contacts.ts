@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authenticate } from '../middleware/auth';
 import multer from 'multer';
+// @ts-ignore
 import vcard from 'vcard-parser';
 import fs from 'fs';
 
@@ -111,7 +112,7 @@ router.post('/', authenticate, async (req, res) => {
 // Add Family Member
 router.post('/:id/family', authenticate, async (req, res) => {
   try {
-    const contactId = parseInt(req.params.id);
+    const contactId = parseInt(req.params.id as string);
     const { relation, full_name, date_of_birth, date_of_death } = req.body;
 
     const familyMember = await prisma.familyMember.create({

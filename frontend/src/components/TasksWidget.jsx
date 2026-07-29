@@ -17,6 +17,14 @@ export default function TasksWidget({ selectedDate, onTasksUpdated }) {
   const [carryForwardTask, setCarryForwardTask] = useState(null);
   const [customCarryDate, setCustomCarryDate] = useState('');
 
+  const getLocalDateStr = (d) => {
+    if (!d) return '';
+    const date = typeof d === 'string' ? new Date(d) : d;
+    if (isNaN(date.getTime())) return '';
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  };
+
+  const dateParam = getLocalDateStr(selectedDate) || getLocalDateStr(new Date());
   const targetDate = selectedDate ? new Date(selectedDate) : new Date();
   const formattedDateStr = targetDate.toLocaleDateString('en-US', {
     weekday: 'short',
@@ -28,8 +36,7 @@ export default function TasksWidget({ selectedDate, onTasksUpdated }) {
   const fetchTasks = async () => {
     try {
       setLoading(true);
-      const isoDate = targetDate.toISOString();
-      const res = await api.get(`/api/tasks?date=${isoDate}`);
+      const res = await api.get(`/api/tasks?date=${dateParam}`);
       setTasks(res.data || []);
     } catch (error) {
       console.error('Error fetching tasks:', error);
@@ -55,7 +62,7 @@ export default function TasksWidget({ selectedDate, onTasksUpdated }) {
       await api.post('/api/tasks', {
         title: newTaskTitle,
         description: newTaskDesc,
-        event_date: targetDate.toISOString()
+        event_date: dateParam
       });
       setNewTaskTitle('');
       setNewTaskDesc('');

@@ -10,6 +10,16 @@ export default function CalendarWidget({ selectedDate, onSelectDate, refreshTrig
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth(); // 0-indexed
 
+  // Helper to format local YYYY-MM-DD string cleanly without timezone drift
+  const formatLocalDateKey = (y, m, d) => {
+    return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  };
+
+  // Helper to create date object set at noon local time (12:00:00) to prevent UTC date shifting
+  const createNoonDate = (y, m, d) => {
+    return new Date(y, m, d, 12, 0, 0);
+  };
+
   // Fetch summary counts for the current month
   const fetchSummary = async () => {
     try {
@@ -38,7 +48,8 @@ export default function CalendarWidget({ selectedDate, onSelectDate, refreshTrig
   const handleResetToday = () => {
     const today = new Date();
     setCurrentMonth(new Date(today.getFullYear(), today.getMonth(), 1));
-    onSelectDate(today);
+    const todayNoon = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0);
+    onSelectDate(todayNoon);
   };
 
   // Calendar math
@@ -52,20 +63,22 @@ export default function CalendarWidget({ selectedDate, onSelectDate, refreshTrig
   // Previous month trailing days
   for (let i = startingDayOfWeek - 1; i >= 0; i--) {
     const dayNum = daysInPrevMonth - i;
-    const dateObj = new Date(year, month - 1, dayNum);
+    const prevMonthIdx = month === 0 ? 11 : month - 1;
+    const prevYearNum = month === 0 ? year - 1 : year;
+    const dateObj = createNoonDate(prevYearNum, prevMonthIdx, dayNum);
+    const dateStr = formatLocalDateKey(prevYearNum, prevMonthIdx, dayNum);
     daysArray.push({
       date: dateObj,
       dayNum,
       isCurrentMonth: false,
-      dateStr: dateObj.toISOString().split('T')[0]
+      dateStr
     });
   }
 
   // Current month days
   for (let dayNum = 1; dayNum <= daysInMonth; dayNum++) {
-    const dateObj = new Date(year, month, dayNum);
-    // Format YYYY-MM-DD local string
-    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+    const dateObj = createNoonDate(year, month, dayNum);
+    const dateStr = formatLocalDateKey(year, month, dayNum);
     daysArray.push({
       date: dateObj,
       dayNum,
@@ -78,8 +91,10 @@ export default function CalendarWidget({ selectedDate, onSelectDate, refreshTrig
   const totalGridCells = daysArray.length > 35 ? 42 : 35;
   const remainingCells = totalGridCells - daysArray.length;
   for (let dayNum = 1; dayNum <= remainingCells; dayNum++) {
-    const dateObj = new Date(year, month + 1, dayNum);
-    const dateStr = dateObj.toISOString().split('T')[0];
+    const nextMonthIdx = month === 11 ? 0 : month + 1;
+    const nextYearNum = month === 11 ? year + 1 : year;
+    const dateObj = createNoonDate(nextYearNum, nextMonthIdx, dayNum);
+    const dateStr = formatLocalDateKey(nextYearNum, nextMonthIdx, dayNum);
     daysArray.push({
       date: dateObj,
       dayNum,
@@ -88,8 +103,16 @@ export default function CalendarWidget({ selectedDate, onSelectDate, refreshTrig
     });
   }
 
-  const todayStr = new Date().toISOString().split('T')[0];
-  const selectedStr = selectedDate ? new Date(selectedDate).toISOString().split('T')[0] : todayStr;
+  const now = new Date();
+  const todayStr = formatLocalDateKey(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const getSelectedStr = (sDate) => {
+    if (!sDate) return todayStr;
+    const d = typeof sDate === 'string' ? new Date(sDate) : sDate;
+    if (isNaN(d.getTime())) return todayStr;
+    return formatLocalDateKey(d.getFullYear(), d.getMonth(), d.getDate());
+  };
+  const selectedStr = getSelectedStr(selectedDate);
 
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
