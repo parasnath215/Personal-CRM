@@ -1,137 +1,154 @@
-# Personal CRM (WhatsApp CRM)
+# Personal CRM & Task Management System
 
-A full-stack Personal CRM application designed to manage contacts, tasks, goals, hotel guest check-ins, and expenses. Built with a Node.js/Express + TypeScript backend using Prisma, and a Vite + React frontend.
+A full-stack Personal CRM and Task Manager built with **Express.js**, **TypeScript**, **Prisma**, **React**, **Vite**, and **TailwindCSS**.
 
-## Project Structure
+---
 
+## 🏗️ Project Structure
+
+```text
+├── backend/            # Express.js API Server (TypeScript, Prisma, Node-Cron, WhatsApp)
+├── frontend/           # React SPA Client (Vite, React Router, TailwindCSS)
+├── render.yaml         # Render Blueprint configuration for 1-click deployment
+└── README.md           # Documentation & Hosting Guide
 ```
-├── backend/            # Express.js Server (TypeScript, Prisma)
-├── frontend/           # React Client (Vite, TailwindCSS)
-└── README.md           # This deployment & hosting guide
-```
 
 ---
 
-## Local Development Quickstart
+## 🚀 Hosting on Render (Step-by-Step Guide)
 
-### 1. Backend Setup
-1. Navigate to the backend directory:
-   ```bash
-   cd backend
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Set up environment variables by copying `.env.example` or creating `.env`:
-   ```ini
-   DATABASE_URL="file:./dev.db"
-   PORT=3000
-   JWT_SECRET="your_jwt_secret"
-   ```
-4. Run migrations to initialize the database:
-   ```bash
-   npx prisma migrate dev
-   ```
-5. Seed the initial database (creates admin and accountant users, etc.):
-   ```bash
-   npm run seed
-   ```
-6. Start the development server:
-   ```bash
-   npm run dev
-   ```
-
-### 2. Frontend Setup
-1. Navigate to the frontend directory:
-   ```bash
-   cd ../frontend
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Start the Vite development server:
-   ```bash
-   npm run dev
-   ```
+You can host both the **Backend API** and **Frontend Static Web App** on [Render.com](https://render.com) using either the **1-Click Render Blueprint** (Recommended) or by setting up the two services manually.
 
 ---
 
-## Render Deployment Guide
+### Option 1: 1-Click Render Blueprint (Recommended)
 
-This project is fully structured for easy hosting on [Render](https://render.com). 
-
-We recommend hosting the **backend as a Web Service** and the **frontend as a Static Site**.
+1. Push your repository to **GitHub**.
+2. Log into your [Render Dashboard](https://dashboard.render.com/).
+3. Click **New +** in the top right corner and select **Blueprint**.
+4. Connect your GitHub repository (`Personal-CRM`).
+5. Render will automatically detect `render.yaml` and configure:
+   - **Backend Web Service** (`crm-backend`)
+   - **Frontend Static Site** (`crm-frontend`)
+6. Click **Apply**. Render will build and deploy both services!
 
 ---
 
-### Phase 1: Deploying the Backend (Web Service)
+### Option 2: Manual Setup on Render
 
-Since the backend uses a local SQLite database (`dev.db`), standard server instances on Render will reset the database daily due to ephemeral filesystems. To keep your data safe, we suggest either mounting a **Persistent Disk** on Render or switching to a **PostgreSQL Database**.
+If you prefer to configure each service manually in the Render dashboard:
 
-#### Option A: Hosting with SQLite and Render Persistent Disk (Free/Low Cost)
-1. **Create Web Service**:
-   - Go to your Render Dashboard and create a new **Web Service**.
-   - Connect your GitHub repository.
-2. **Configure Settings**:
+#### Step 1: Deploy the Backend Service
+
+1. On the Render Dashboard, click **New +** → **Web Service**.
+2. Connect your GitHub repository.
+3. Configure the service settings:
+   - **Name**: `crm-backend`
+   - **Region**: Select your preferred region (e.g., Singapore / Oregon / Frankfurt).
    - **Root Directory**: `backend`
    - **Environment**: `Node`
    - **Build Command**: `npm install && npm run build`
-   - **Start Command**: `npx prisma migrate deploy && npm start`
-3. **Mount Persistent Disk**:
-   - Scroll down to the **Disks** section and click **Add Disk**.
-   - **Name**: `sqlite_db`
-   - **Mount Path**: `/data`
-   - **Size**: `1 GiB` (minimum, sufficient for millions of rows)
-4. **Environment Variables**:
-   - Add the following variables under the **Env Groups / Environment Variables** section:
-     - `PORT`: `3000` (or leave empty, Render will auto-assign a port)
-     - `DATABASE_URL`: `file:/data/dev.db` (points to the mounted disk)
-     - `JWT_SECRET`: a secure random string (e.g. `your_production_secret`)
-     - `NODE_ENV`: `production`
-
-#### Option B: Deploying with PostgreSQL (Highly Recommended for Production)
-If you prefer not to use SQLite persistent disks, you can deploy a managed database on Render:
-1. **Create Database**:
-   - Go to Render Dashboard -> **New** -> **PostgreSQL**.
-   - Retrieve the **Internal/External Database URL**.
-2. **Update Prisma Provider**:
-   - Open `backend/prisma/schema.prisma` and change the database provider to `postgresql`:
-     ```prisma
-     datasource db {
-       provider = "postgresql"
-       url      = env("DATABASE_URL")
-     }
-     ```
-3. **Create Web Service**:
-   - Root Directory: `backend`
-   - Build Command: `npm install && npm run build`
-   - Start Command: `npx prisma migrate deploy && npm start`
-4. **Environment Variables**:
-   - Set `DATABASE_URL` to your Render PostgreSQL connection string.
-   - Set `JWT_SECRET` and other variables as mentioned above.
+   - **Start Command**: `npm run start`
+4. Add **Environment Variables** under the **Environment** tab:
+   | Key | Value / Instructions |
+   | :--- | :--- |
+   | `PORT` | `10000` |
+   | `NODE_ENV` | `production` |
+   | `JWT_SECRET` | Enter a secure random string (e.g. `secret_key_crm_99`) |
+   | `DATABASE_URL` | `file:./dev.db` |
+5. Click **Create Web Service**.
+6. Once deployed, copy your backend URL (e.g., `https://crm-backend.onrender.com`).
 
 ---
 
-### Phase 2: Deploying the Frontend (Static Site)
+#### Step 2: Deploy the Frontend Static Site
 
-The frontend is a Vite React application that can be served as a Static Site.
-
-1. **Create Static Site**:
-   - Go to Render Dashboard and click **New** -> **Static Site**.
-   - Connect your GitHub repository.
-2. **Configure Settings**:
+1. On the Render Dashboard, click **New +** → **Static Site**.
+2. Connect your GitHub repository.
+3. Configure the static site settings:
+   - **Name**: `crm-frontend`
    - **Root Directory**: `frontend`
    - **Build Command**: `npm install && npm run build`
    - **Publish Directory**: `dist`
-3. **Configure Environment Variables**:
-   - Add a environment variable:
-     - `VITE_API_URL`: The URL of your live backend Web Service (e.g., `https://personal-crm-backend.onrender.com` - do **not** add a trailing slash `/`).
-4. **Setup Single Page Application (SPA) Routing Rewrite Rule**:
-   - Because the React app uses client-side routing, page refreshes on subpages (like `/contacts` or `/tasks`) will return a 404 error unless rewrite rules are configured.
-   - Go to the **Redirects/Rewrites** tab of your Static Site dashboard on Render.
-   - Click **Add Rule** and enter:
+4. Add **Environment Variables** under the **Environment** tab:
+   | Key | Value |
+   | :--- | :--- |
+   | `VITE_API_URL` | Your Backend URL from Step 1 (e.g., `https://crm-backend.onrender.com`) |
+5. Configure **Redirects / Rewrites** (Essential for React Router):
+   - Go to **Redirects/Rewrites** tab in your static site dashboard.
+   - Click **Add Rule**:
      - **Source**: `/*`
-     - **Destination**: `/index.html`
      - **Action**: `Rewrite`
+     - **Destination**: `/index.html`
+6. Click **Create Static Site**.
+
+---
+
+### 🗄️ Database Options on Render
+
+#### Default SQLite (Built-in)
+By default, the backend uses SQLite (`DATABASE_URL="file:./dev.db"`). 
+
+*Note: Free tier Render instances restart periodically. If you want SQLite data to persist across restarts:*
+- Add a **Render Persistent Disk** under your Backend service settings.
+- Set Mount Path: `/var/data`
+- Update Environment Variable: `DATABASE_URL="file:/var/data/dev.db"`
+
+#### External PostgreSQL / Render PostgreSQL
+To use PostgreSQL:
+1. Create a free **PostgreSQL Database** on Render.
+2. Update `backend/prisma/schema.prisma`:
+   ```prisma
+   datasource db {
+     provider = "postgresql"
+     url      = env("DATABASE_URL")
+   }
+   ```
+3. Set `DATABASE_URL` in your backend service environment variables to your PostgreSQL connection string.
+
+---
+
+### 🔑 Seeding Initial Data on Render
+
+After your backend service is deployed:
+1. Go to your Backend Service dashboard on Render.
+2. Click the **Shell** tab.
+3. Run the seed command to create default records:
+   ```bash
+   npm run seed
+   ```
+4. **Default Admin Login Credentials**:
+   - **Email**: `admin@crm.com`
+   - **Password**: `admin123`
+
+---
+
+## 💻 Local Development Quickstart
+
+### 1. Backend Setup
+```bash
+cd backend
+npm install
+npm run build
+npm run seed     # Seeds initial admin user & dummy data
+npm run dev      # Starts Express dev server on port 3000
+```
+
+### 2. Frontend Setup
+```bash
+cd frontend
+npm install
+npm run dev      # Starts Vite dev server on http://localhost:5173
+```
+
+---
+
+## 📱 Features
+
+- **Interactive Dashboard**: Real-time metric cards, interactive task calendar with day status indicators, today's schedule, and tomorrow's upcoming next-day tasks preview.
+- **Task Management**: Create, edit, carry forward, and mark tasks done across custom dates.
+- **Long-Term Goals**: Set target dates, financial/personal milestones, log monthly progress, and monitor percentage completion bars.
+- **Contacts Directory**: Client profiles, family member records, tags, manual contact creation, and VCF import/export.
+- **Hotel Guests Management**: Check-in guest management, room number assignments, and guest filter tracking.
+- **Reports & Expenses**: Track operational expenses by category (Food, Utilities, Travel, etc.) with visual pie chart analytics.
+- **WhatsApp Integration**: Session pairing and optional automated message notifications via `whatsapp-web.js`.

@@ -1,0 +1,46 @@
+# Render Blueprint for Personal-CRM (Frontend + Backend)
+# https://render.com/docs/blueprint-spec
+
+services:
+  # ----------------------------------------------------
+  # 1. Backend Web Service (Node.js + Express + Prisma)
+  # ----------------------------------------------------
+  - type: web
+    name: crm-backend
+    env: node
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        value: file:./dev.db
+
+  # ----------------------------------------------------
+  # 2. Frontend Static Site (React + Vite)
+  # ----------------------------------------------------
+  - type: web
+    name: crm-frontend
+    env: static
+    plan: free
+    region: singapore
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: crm-backend
+          property: host
