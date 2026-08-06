@@ -11,6 +11,7 @@ import goalsRoutes from './routes/goals';
 import hotelRoutes from './routes/hotel';
 import whatsappRoutes from './routes/whatsapp';
 import whatsappService from './services/whatsapp';
+import { ensureAdminUserExists } from './seed';
 import path from 'path';
 import fs from 'fs';
 import './cron'; // Initialize background cron jobs
@@ -20,6 +21,16 @@ dotenv.config();
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Health Check Endpoint (Used for Keep-Awake / Monitoring)
+app.get('/api/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+    message: 'Backend server is active and healthy'
+  });
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/tasks', tasksRoutes);
@@ -33,9 +44,12 @@ app.use('/api/whatsapp', whatsappRoutes);
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  
+app.listen(PORT, async () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+
+  // Automatically ensure admin user exists on server start
+  await ensureAdminUserExists();
+
   // Auto-initialize WhatsApp if a saved session is found
   const sessionPath = path.join(__dirname, '../.wwebjs_auth/session-crm-session');
   if (fs.existsSync(sessionPath)) {

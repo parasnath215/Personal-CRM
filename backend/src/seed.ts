@@ -3,31 +3,32 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
-async function main() {
-  const adminEmail = 'admin@crm.com';
-  const existingAdmin = await prisma.user.findUnique({ where: { email: adminEmail } });
+export async function ensureAdminUserExists() {
+  try {
+    const adminEmail = 'admin@crm.com';
+    const existingAdmin = await prisma.user.findUnique({ where: { email: adminEmail } });
 
-  if (!existingAdmin) {
-    const hashedPassword = await bcrypt.hash('admin123', 10);
-    await prisma.user.create({
-      data: {
-        email: adminEmail,
-        password: hashedPassword,
-        name: 'Admin User',
-        role: 'admin',
-      }
-    });
-    console.log('Admin user seeded: admin@crm.com / admin123');
-  } else {
-    console.log('Admin user already exists.');
+    if (!existingAdmin) {
+      const hashedPassword = await bcrypt.hash('admin123', 10);
+      await prisma.user.create({
+        data: {
+          email: adminEmail,
+          password: hashedPassword,
+          name: 'Admin User',
+          role: 'admin',
+        }
+      });
+      console.log('✅ Auto-seeded default admin user: admin@crm.com / admin123');
+    } else {
+      console.log('ℹ️ Admin user exists: admin@crm.com');
+    }
+  } catch (error) {
+    console.error('⚠️ Warning: Auto-seeding admin user failed:', error);
   }
 }
 
-main()
-  .catch(e => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
+if (require.main === module) {
+  ensureAdminUserExists().finally(async () => {
     await prisma.$disconnect();
   });
+}

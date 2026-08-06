@@ -1,8 +1,26 @@
 import cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
 import whatsappService from './services/whatsapp';
+import https from 'https';
+import http from 'http';
 
 const prisma = new PrismaClient();
+
+// -------------------------------------------------------------
+// Keep-Awake Self Ping (Runs every 10 mins to prevent Render free tier sleep)
+// -------------------------------------------------------------
+cron.schedule('*/10 * * * *', () => {
+  const targetUrl = process.env.RENDER_EXTERNAL_URL || process.env.BACKEND_URL;
+  if (targetUrl) {
+    const healthEndpoint = `${targetUrl.replace(/\/$/, '')}/api/health`;
+    const requestModule = healthEndpoint.startsWith('https') ? https : http;
+    requestModule.get(healthEndpoint, (res) => {
+      console.log(`[Keep-Awake] Self-ping status: ${res.statusCode}`);
+    }).on('error', (err) => {
+      console.error(`[Keep-Awake] Self-ping error: ${err.message}`);
+    });
+  }
+});
 
 // Run every night at midnight (0 0 * * *)
 // For testing/development, you can trigger this logic manually or set a shorter interval
