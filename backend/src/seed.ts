@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from './prisma';
 import bcrypt from 'bcryptjs';
-
-const prisma = new PrismaClient();
 
 export async function ensureAdminUserExists() {
   try {
@@ -28,7 +26,5 @@ export async function ensureAdminUserExists() {
 }
 
 if (require.main === module) {
-  ensureAdminUserExists().finally(async () => {
-    await prisma.$disconnect();
-  });
+  ensureAdminUserExists();
 }
