@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
-  const [email, setEmail] = useState('admin@crm.com');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -22,7 +22,7 @@ export default function Login() {
       if (serverMsg) {
         setError(serverMsg);
       } else if (err.code === 'ERR_NETWORK') {
-        setError('Cannot connect to server. The backend might be waking up from sleep mode, please wait 15-30 seconds and try again.');
+        setError('Cannot connect to server. Please try again.');
       } else {
         setError('Invalid credentials or server error. Please try again.');
       }
@@ -84,21 +84,10 @@ export default function Login() {
                 disabled={loading}
                 className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
               >
-                {loading ? 'Connecting to Server...' : 'Sign in'}
+                {loading ? 'Signing in...' : 'Sign in'}
               </button>
             </div>
           </form>
-
-          <div className="mt-6 border-t border-slate-700 pt-4">
-            <div className="bg-slate-900/60 p-3 rounded text-xs text-slate-400 space-y-1">
-              <p className="font-semibold text-slate-300">🔑 Default Credentials:</p>
-              <p>Email: <code className="text-blue-400 bg-slate-800 px-1 py-0.5 rounded">admin@crm.com</code></p>
-              <p>Password: <code className="text-blue-400 bg-slate-800 px-1 py-0.5 rounded">admin123</code></p>
-              <p className="text-slate-500 mt-2 italic">
-                Note: On Render free tier, backend takes ~30s to spin up if idle.
-              </p>
-            </div>
-          </div>
         </div>
       </div>
     </div>
