@@ -21,8 +21,6 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: DATABASE_URL
-        value: postgresql://neondb_owner:npg_PkFGM5QZmv7d@ep-bold-violet-axz2ucrt-pooler.c-4.us-east-2.aws.neon.tech/neondb?sslmode=require&pgbouncer=true
-      - key: DIRECT_URL
         value: postgresql://neondb_owner:npg_PkFGM5QZmv7d@ep-bold-violet-axz2ucrt.c-4.us-east-2.aws.neon.tech/neondb?sslmode=require
 
   # ----------------------------------------------------
