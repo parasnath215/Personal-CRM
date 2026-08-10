@@ -5,6 +5,7 @@ import multer from 'multer';
 // @ts-ignore
 import vcard from 'vcard-parser';
 import fs from 'fs';
+import { executeDailyWishesAndReminders } from '../cron';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -34,12 +35,6 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
     }
 
     const vcfData = fs.readFileSync(req.file.path, 'utf8');
-    const parsed = vcard.parse(vcfData);
-    
-    // vcard-parser returns an array or object depending on version. Let's assume standard multiple vcards (though it often parses a single).
-    // If it's a bulk file, vcard-parser might return multiple. 
-    // Actually vcard-parser might just return properties. Let's handle a safe array wrapping if needed.
-    // A robust way is to split by "BEGIN:VCARD" if it's multiple.
     const vcards = vcfData.split('BEGIN:VCARD').filter(v => v.trim().length > 0).map(v => 'BEGIN:VCARD' + v);
     
     let importedCount = 0;
@@ -52,8 +47,8 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
       const tel = parsedCard.tel?.[0]?.value || '';
       const email = parsedCard.email?.[0]?.value || null;
       const org = parsedCard.org?.[0]?.value || null;
+      const bday = parsedCard.bday?.[0]?.value || null;
 
-      // Normalize phone number (basic E.164 conversion - just strip non-digits and add + if missing, for simplicity we just clean it)
       const cleanPhone = tel.replace(/[^\d+]/g, '');
 
       if (!fn || !cleanPhone) {
@@ -72,15 +67,14 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
           name: fn,
           phone: cleanPhone,
           email,
-          tags: org ? `Org: ${org}` : null
+          tags: org ? `Org: ${org}` : null,
+          date_of_birth: bday ? new Date(bday) : null
         }
       });
       importedCount++;
     }
 
-    // Cleanup temp file
-    fs.unlinkSync(req.file.path);
-
+    if (req.file) fs.unlinkSync(req.file.path);
     res.json({ message: 'Import complete', importedCount, skippedCount });
   } catch (error) {
     console.error('Error importing VCF:', error);
@@ -89,10 +83,10 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
   }
 });
 
-// Create a single contact manually
+// Create a contact
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { name, phone, email, tags } = req.body;
+    const { name, phone, email, tags, date_of_birth, marriage_anniversary } = req.body;
     
     const existing = await prisma.contact.findUnique({ where: { phone } });
     if (existing) {
@@ -100,7 +94,14 @@ router.post('/', authenticate, async (req, res) => {
     }
 
     const contact = await prisma.contact.create({
-      data: { name, phone, email, tags }
+      data: {
+        name,
+        phone,
+        email,
+        tags,
+        date_of_birth: date_of_birth ? new Date(date_of_birth) : null,
+        marriage_anniversary: marriage_anniversary ? new Date(marriage_anniversary) : null
+      }
     });
     res.json(contact);
   } catch (error) {
@@ -109,11 +110,53 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
+// Update a contact
+router.put('/:id', authenticate, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const { name, phone, email, tags, date_of_birth, marriage_anniversary } = req.body;
+
+    const existing = await prisma.contact.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const updated = await prisma.contact.update({
+      where: { id },
+      data: {
+        name: name || existing.name,
+        phone: phone || existing.phone,
+        email: email !== undefined ? email : existing.email,
+        tags: tags !== undefined ? tags : existing.tags,
+        date_of_birth: date_of_birth !== undefined ? (date_of_birth ? new Date(date_of_birth) : null) : existing.date_of_birth,
+        marriage_anniversary: marriage_anniversary !== undefined ? (marriage_anniversary ? new Date(marriage_anniversary) : null) : existing.marriage_anniversary
+      }
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error updating contact:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete a contact
+router.delete('/:id', authenticate, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    await prisma.contact.delete({ where: { id } });
+    res.json({ success: true, message: 'Contact deleted' });
+  } catch (error) {
+    console.error('Error deleting contact:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Add Family Member
 router.post('/:id/family', authenticate, async (req, res) => {
   try {
     const contactId = parseInt(req.params.id as string);
-    const { relation, full_name, date_of_birth, date_of_death } = req.body;
+    const { relation, full_name, date_of_birth, marriage_anniversary, date_of_death } = req.body;
 
     const familyMember = await prisma.familyMember.create({
       data: {
@@ -121,6 +164,7 @@ router.post('/:id/family', authenticate, async (req, res) => {
         relation,
         full_name,
         date_of_birth: date_of_birth ? new Date(date_of_birth) : null,
+        marriage_anniversary: marriage_anniversary ? new Date(marriage_anniversary) : null,
         date_of_death: date_of_death ? new Date(date_of_death) : null,
       }
     });
@@ -128,6 +172,17 @@ router.post('/:id/family', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Error adding family member:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Manual trigger for automated birthday & anniversary wishes check
+router.post('/trigger-wishes', authenticate, async (_req, res) => {
+  try {
+    const result = await executeDailyWishesAndReminders();
+    res.json(result);
+  } catch (error) {
+    console.error('Error triggering daily wishes check:', error);
+    res.status(500).json({ error: 'Failed to execute wishes automation' });
   }
 });
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../api';
 import Sidebar from '../components/Sidebar';
-import { Mail, Phone, Tag, Upload, Plus, UserPlus, X, UserCheck } from 'lucide-react';
+import { Mail, Phone, Tag, Upload, Plus, UserPlus, X, UserCheck, Cake, Heart, Sparkles, Send } from 'lucide-react';
 
 export default function Contacts() {
   const [contacts, setContacts] = useState([]);
@@ -13,12 +13,29 @@ export default function Contacts() {
 
   // New Contact modal state
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newContact, setNewContact] = useState({ name: '', phone: '', email: '', tags: '' });
+  const [newContact, setNewContact] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    tags: '',
+    date_of_birth: '',
+    marriage_anniversary: ''
+  });
   const [submittingContact, setSubmittingContact] = useState(false);
 
   // Family Member form state
   const [addingFamilyFor, setAddingFamilyFor] = useState(null);
-  const [familyForm, setFamilyForm] = useState({ relation: 'spouse', full_name: '', date_of_birth: '', date_of_death: '' });
+  const [familyForm, setFamilyForm] = useState({
+    relation: 'spouse',
+    full_name: '',
+    date_of_birth: '',
+    marriage_anniversary: '',
+    date_of_death: ''
+  });
+
+  // Automation wish check state
+  const [triggeringWishes, setTriggeringWishes] = useState(false);
+  const [wishResult, setWishResult] = useState(null);
 
   const fetchContacts = async () => {
     try {
@@ -45,7 +62,7 @@ export default function Contacts() {
     setSubmittingContact(true);
     try {
       await api.post('/api/contacts', newContact);
-      setNewContact({ name: '', phone: '', email: '', tags: '' });
+      setNewContact({ name: '', phone: '', email: '', tags: '', date_of_birth: '', marriage_anniversary: '' });
       setShowAddModal(false);
       fetchContacts();
     } catch (error) {
@@ -84,7 +101,7 @@ export default function Contacts() {
     try {
       await api.post(`/api/contacts/${addingFamilyFor}/family`, familyForm);
       setAddingFamilyFor(null);
-      setFamilyForm({ relation: 'spouse', full_name: '', date_of_birth: '', date_of_death: '' });
+      setFamilyForm({ relation: 'spouse', full_name: '', date_of_birth: '', marriage_anniversary: '', date_of_death: '' });
       fetchContacts();
     } catch (error) {
       console.error('Error adding family member', error);
@@ -92,18 +109,50 @@ export default function Contacts() {
     }
   };
 
+  const handleTriggerWishes = async () => {
+    setTriggeringWishes(true);
+    setWishResult(null);
+    try {
+      const res = await api.post('/api/contacts/trigger-wishes');
+      setWishResult(res.data);
+      setTimeout(() => setWishResult(null), 6000);
+    } catch (error) {
+      console.error('Failed to trigger wishes check', error);
+      alert('Failed to run wishes automation.');
+    } finally {
+      setTriggeringWishes(false);
+    }
+  };
+
+  const formatDateStr = (dateVal) => {
+    if (!dateVal) return null;
+    const d = new Date(dateVal);
+    return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
   return (
     <div className="min-h-screen bg-slate-900 flex text-slate-200">
       <Sidebar />
-      <main className="flex-1 p-8 overflow-y-auto max-w-7xl mx-auto w-full">
-        <header className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <main className="flex-1 p-4 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full">
+        {/* Header */}
+        <header className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-2">
               Contacts Directory <UserCheck className="w-6 h-6 text-blue-400" />
             </h2>
-            <p className="text-slate-400 mt-1">Manage client profiles, family records, and VCF imports.</p>
+            <p className="text-slate-400 mt-1">Manage client profiles, birthdays, marriage anniversaries, and VCF imports.</p>
           </div>
-          <div className="flex items-center gap-3">
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={handleTriggerWishes}
+              disabled={triggeringWishes}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-950/30 text-sm disabled:opacity-50"
+            >
+              <Sparkles className="w-4 h-4" />
+              {triggeringWishes ? 'Checking...' : "Run Today's Wishes Check"}
+            </button>
+
             <input type="file" accept=".vcf" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
             
             <button 
@@ -125,6 +174,26 @@ export default function Contacts() {
           </div>
         </header>
 
+        {/* Wishes Result Banner */}
+        {wishResult && (
+          <div className="mb-6 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 flex items-center justify-between text-sm shadow-md animate-fade-in">
+            <div className="flex items-center gap-3">
+              <Send className="w-5 h-5 text-emerald-400" />
+              <div>
+                <p className="font-bold">Automated Wishes Executed Successfully!</p>
+                <p className="text-xs text-emerald-200 mt-0.5">
+                  🎂 Birthdays Sent: <strong>{wishResult.birthdayWishesSent || 0}</strong> | 
+                  💑 Anniversaries Sent: <strong>{wishResult.anniversaryWishesSent || 0}</strong> | 
+                  🤍 Remembrances Sent: <strong>{wishResult.remembranceSent || 0}</strong>
+                </p>
+              </div>
+            </div>
+            <button onClick={() => setWishResult(null)} className="text-emerald-400 hover:text-white p-1">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {loading ? (
           <div className="p-12 text-center text-slate-400">Loading contacts...</div>
         ) : (
@@ -141,10 +210,10 @@ export default function Contacts() {
               </div>
             ) : (
               contacts.map(contact => (
-                <div key={contact.id} className="bg-slate-800 rounded-xl shadow-md border border-slate-700/80 overflow-hidden flex flex-col hover:border-slate-600 transition-colors">
+                <div key={contact.id} className="bg-slate-800 rounded-2xl shadow-md border border-slate-700/80 overflow-hidden flex flex-col hover:border-slate-600 transition-colors">
                   <div className="p-6 pb-4 border-b border-slate-700/50">
                     <div className="flex items-start justify-between">
-                      <h3 className="text-xl font-bold text-white mb-2">{contact.name}</h3>
+                      <h3 className="text-xl font-bold text-white mb-1">{contact.name}</h3>
                       {contact.tags && (
                         <div className="flex items-center gap-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-1 rounded-lg text-xs font-semibold">
                           <Tag className="w-3 h-3" />
@@ -152,6 +221,7 @@ export default function Contacts() {
                         </div>
                       )}
                     </div>
+
                     <div className="flex flex-col gap-2 text-sm text-slate-300 mt-2">
                       <div className="flex items-center gap-2">
                         <Phone className="w-4 h-4 text-emerald-400" />
@@ -164,11 +234,30 @@ export default function Contacts() {
                         </div>
                       )}
                     </div>
+
+                    {/* DOB & Marriage Anniversary Badges */}
+                    <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-slate-700/40 text-xs">
+                      {contact.date_of_birth && (
+                        <div className="flex items-center gap-1.5 bg-amber-500/10 text-amber-300 border border-amber-500/20 px-2.5 py-1 rounded-full">
+                          <Cake className="w-3.5 h-3.5 text-amber-400" />
+                          <span>DOB: {formatDateStr(contact.date_of_birth)}</span>
+                        </div>
+                      )}
+                      {contact.marriage_anniversary && (
+                        <div className="flex items-center gap-1.5 bg-rose-500/10 text-rose-300 border border-rose-500/20 px-2.5 py-1 rounded-full">
+                          <Heart className="w-3.5 h-3.5 text-rose-400" />
+                          <span>Anniversary: {formatDateStr(contact.marriage_anniversary)}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   
+                  {/* Family Members Section */}
                   <div className="p-5 bg-slate-800/50 flex-1">
                     <div className="flex justify-between items-center mb-3">
-                      <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Family Members ({contact.familyMembers?.length || 0})</h4>
+                      <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                        Family Members ({contact.familyMembers?.length || 0})
+                      </h4>
                       <button 
                         onClick={() => setAddingFamilyFor(addingFamilyFor === contact.id ? null : contact.id)}
                         className="text-xs text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1 bg-slate-700/60 hover:bg-slate-700 px-2.5 py-1 rounded-lg transition-colors"
@@ -182,11 +271,12 @@ export default function Contacts() {
                         <div>
                           <label className="block text-xs text-slate-400 mb-1">Full Name</label>
                           <input 
-                            required type="text" placeholder="e.g. Rahul Sharma" 
+                            required type="text" placeholder="e.g. Anita Sharma" 
                             value={familyForm.full_name} onChange={e => setFamilyForm({...familyForm, full_name: e.target.value})}
                             className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500" 
                           />
                         </div>
+
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="block text-xs text-slate-400 mb-1">Relation</label>
@@ -198,6 +288,7 @@ export default function Contacts() {
                               <option value="father">Father</option>
                               <option value="mother">Mother</option>
                               <option value="child">Child</option>
+                              <option value="sibling">Sibling</option>
                             </select>
                           </div>
                           <div>
@@ -209,6 +300,16 @@ export default function Contacts() {
                             />
                           </div>
                         </div>
+
+                        <div>
+                          <label className="block text-xs text-slate-400 mb-1">Marriage Anniversary (Optional)</label>
+                          <input 
+                            type="date"
+                            value={familyForm.marriage_anniversary} onChange={e => setFamilyForm({...familyForm, marriage_anniversary: e.target.value})}
+                            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none"
+                          />
+                        </div>
+
                         <div className="flex justify-end gap-2 pt-1">
                           <button type="button" onClick={() => setAddingFamilyFor(null)} className="text-xs text-slate-400 hover:text-white px-3 py-1.5 rounded-lg">Cancel</button>
                           <button type="submit" className="text-xs bg-blue-600 hover:bg-blue-500 text-white font-medium px-3.5 py-1.5 rounded-lg transition-colors">Save Member</button>
@@ -221,12 +322,13 @@ export default function Contacts() {
                     ) : (
                       <ul className="space-y-2">
                         {contact.familyMembers.map(member => (
-                          <li key={member.id} className="text-xs flex items-center justify-between bg-slate-900/60 border border-slate-700/50 px-3 py-2 rounded-lg">
+                          <li key={member.id} className="text-xs flex flex-col sm:flex-row sm:items-center justify-between bg-slate-900/60 border border-slate-700/50 px-3 py-2 rounded-xl gap-1">
                             <span className="font-medium text-slate-200">
                               {member.full_name} <span className="text-slate-400 font-normal">({member.relation})</span>
                             </span>
-                            <div className="flex items-center gap-2 text-slate-400">
-                              {member.date_of_birth && <span>DOB: {new Date(member.date_of_birth).toLocaleDateString()}</span>}
+                            <div className="flex items-center gap-2 text-slate-400 text-[11px]">
+                              {member.date_of_birth && <span className="flex items-center gap-1"><Cake className="w-3 h-3 text-amber-400" /> {formatDateStr(member.date_of_birth)}</span>}
+                              {member.marriage_anniversary && <span className="flex items-center gap-1"><Heart className="w-3 h-3 text-rose-400" /> {formatDateStr(member.marriage_anniversary)}</span>}
                             </div>
                           </li>
                         ))}
@@ -241,7 +343,7 @@ export default function Contacts() {
 
         {/* Add Contact Modal */}
         {showAddModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl">
               <div className="flex items-center justify-between mb-5 border-b border-slate-700/60 pb-3">
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
@@ -289,6 +391,28 @@ export default function Contacts() {
                     onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
                   />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Date of Birth</label>
+                    <input
+                      type="date"
+                      value={newContact.date_of_birth}
+                      onChange={(e) => setNewContact({ ...newContact, date_of_birth: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Marriage Anniversary</label>
+                    <input
+                      type="date"
+                      value={newContact.marriage_anniversary}
+                      onChange={(e) => setNewContact({ ...newContact, marriage_anniversary: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
                 </div>
 
                 <div>

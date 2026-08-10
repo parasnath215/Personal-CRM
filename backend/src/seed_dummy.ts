@@ -1,10 +1,12 @@
-﻿import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { ensureDefaultCategoriesExist } from "./seed";
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log("Seeding dummy data with Indian names...\n");
+  await ensureDefaultCategoriesExist();
 
   // 1. Admin user
   let admin = await prisma.user.findUnique({ where: { email: "admin@crm.com" } });
@@ -18,32 +20,40 @@ async function main() {
 
   // 2. Contacts
   const contactsData = [
-    { name: "Rajesh Kumar",   phone: "+919876543201", email: "rajesh.kumar@gmail.com",  tags: "VIP,Business" },
-    { name: "Priya Sharma",   phone: "+919876543202", email: "priya.sharma@gmail.com",  tags: "Family,Regular" },
-    { name: "Amit Verma",     phone: "+919876543203", email: "amit.verma@yahoo.com",    tags: "Business" },
-    { name: "Sunita Patel",   phone: "+919876543204", email: "sunita.patel@gmail.com",  tags: "VIP" },
-    { name: "Vikram Singh",   phone: "+919876543205", email: "vikram.singh@outlook.com",tags: "Regular" },
-    { name: "Deepa Nair",     phone: "+919876543206", email: "deepa.nair@gmail.com",    tags: "Family" },
-    { name: "Arun Mishra",    phone: "+919876543207", email: "arun.mishra@gmail.com",   tags: "Business,Regular" },
-    { name: "Kavita Joshi",   phone: "+919876543208", email: "kavita.joshi@gmail.com",  tags: "VIP,Family" },
-    { name: "Suresh Gupta",   phone: "+919876543209", email: "suresh.gupta@yahoo.com",  tags: "Regular" },
-    { name: "Meena Iyer",     phone: "+919876543210", email: "meena.iyer@gmail.com",    tags: "Business,VIP" },
+    { name: "Rajesh Kumar",   phone: "+919876543201", email: "rajesh.kumar@gmail.com",  tags: "VIP,Business",     date_of_birth: new Date("1982-08-10"), marriage_anniversary: new Date("2012-12-05") },
+    { name: "Priya Sharma",   phone: "+919876543202", email: "priya.sharma@gmail.com",  tags: "Family,Regular",   date_of_birth: new Date("1990-04-15"), marriage_anniversary: new Date("2018-08-10") },
+    { name: "Amit Verma",     phone: "+919876543203", email: "amit.verma@yahoo.com",    tags: "Business",         date_of_birth: new Date("1986-09-12"), marriage_anniversary: new Date("2015-06-20") },
+    { name: "Sunita Patel",   phone: "+919876543204", email: "sunita.patel@gmail.com",  tags: "VIP",              date_of_birth: new Date("1988-11-20"), marriage_anniversary: new Date("2014-02-14") },
+    { name: "Vikram Singh",   phone: "+919876543205", email: "vikram.singh@outlook.com",tags: "Regular",          date_of_birth: new Date("1980-08-10"), marriage_anniversary: new Date("2008-01-10") },
+    { name: "Deepa Nair",     phone: "+919876543206", email: "deepa.nair@gmail.com",    tags: "Family",           date_of_birth: new Date("1992-01-25"), marriage_anniversary: new Date("2020-03-18") },
+    { name: "Arun Mishra",    phone: "+919876543207", email: "arun.mishra@gmail.com",   tags: "Business,Regular", date_of_birth: new Date("1985-05-14"), marriage_anniversary: new Date("2016-10-30") },
+    { name: "Kavita Joshi",   phone: "+919876543208", email: "kavita.joshi@gmail.com",  tags: "VIP,Family",       date_of_birth: new Date("1993-08-03"), marriage_anniversary: new Date("2019-08-10") },
+    { name: "Suresh Gupta",   phone: "+919876543209", email: "suresh.gupta@yahoo.com",  tags: "Regular",          date_of_birth: new Date("1978-07-22"), marriage_anniversary: new Date("2005-04-12") },
+    { name: "Meena Iyer",     phone: "+919876543210", email: "meena.iyer@gmail.com",    tags: "Business,VIP",     date_of_birth: new Date("1991-10-08"), marriage_anniversary: new Date("2017-09-25") },
   ];
 
   const contacts: any[] = [];
   for (const c of contactsData) {
     const ex = await prisma.contact.findUnique({ where: { phone: c.phone } });
-    contacts.push(ex ?? await prisma.contact.create({ data: c }));
+    if (ex) {
+      const updated = await prisma.contact.update({
+        where: { id: ex.id },
+        data: { date_of_birth: c.date_of_birth, marriage_anniversary: c.marriage_anniversary }
+      });
+      contacts.push(updated);
+    } else {
+      contacts.push(await prisma.contact.create({ data: c }));
+    }
   }
-  console.log(`${contacts.length} contacts seeded`);
+  console.log(`${contacts.length} contacts seeded/updated`);
 
   // Family members
   const familyData = [
-    { contact_id: contacts[0].id, relation: "spouse", full_name: "Anita Kumar",   date_of_birth: new Date("1985-06-15") },
+    { contact_id: contacts[0].id, relation: "spouse", full_name: "Anita Kumar",   date_of_birth: new Date("1985-08-10"), marriage_anniversary: new Date("2012-12-05") },
     { contact_id: contacts[0].id, relation: "child",  full_name: "Rohit Kumar",   date_of_birth: new Date("2010-03-22") },
     { contact_id: contacts[1].id, relation: "father", full_name: "Ramesh Sharma", date_of_birth: new Date("1955-11-08") },
     { contact_id: contacts[1].id, relation: "mother", full_name: "Savita Sharma", date_of_birth: new Date("1958-04-30") },
-    { contact_id: contacts[2].id, relation: "spouse", full_name: "Ritu Verma",    date_of_birth: new Date("1988-09-12") },
+    { contact_id: contacts[2].id, relation: "spouse", full_name: "Ritu Verma",    date_of_birth: new Date("1988-09-12"), marriage_anniversary: new Date("2015-08-10") },
     { contact_id: contacts[3].id, relation: "child",  full_name: "Pooja Patel",   date_of_birth: new Date("2012-07-19") },
     { contact_id: contacts[4].id, relation: "father", full_name: "Balveer Singh", date_of_birth: new Date("1950-01-05") },
     { contact_id: contacts[5].id, relation: "spouse", full_name: "Sunil Nair",    date_of_birth: new Date("1982-12-25") },

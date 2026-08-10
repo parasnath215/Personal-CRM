@@ -24,26 +24,29 @@ model User {
 }
 
 model Contact {
-  id            Int             @id @default(autoincrement())
-  name          String
-  phone         String          @unique // E.164
-  email         String?
-  tags          String?
-  created_at    DateTime        @default(now())
+  id                    Int             @id @default(autoincrement())
+  name                  String
+  phone                 String          @unique // E.164
+  email                 String?
+  tags                  String?
+  date_of_birth         DateTime?
+  marriage_anniversary  DateTime?
+  created_at            DateTime        @default(now())
   
   familyMembers FamilyMember[]
   notifications DashboardNotification[]
 }
 
 model FamilyMember {
-  id            Int       @id @default(autoincrement())
-  contact_id    Int
-  relation      String    // self/father/mother/spouse/child
-  full_name     String
-  date_of_birth DateTime?
-  date_of_death DateTime?
+  id                   Int       @id @default(autoincrement())
+  contact_id           Int
+  relation             String    // self/father/mother/spouse/child
+  full_name            String
+  date_of_birth        DateTime?
+  marriage_anniversary DateTime?
+  date_of_death        DateTime?
   
-  contact       Contact   @relation(fields: [contact_id], references: [id], onDelete: Cascade)
+  contact              Contact   @relation(fields: [contact_id], references: [id], onDelete: Cascade)
 }
 
 model Bill {
@@ -88,6 +91,7 @@ model TaxReminder {
 
 model Expense {
   id           Int      @id @default(autoincrement())
+  type         String   @default("expenditure") // 'income' or 'expenditure'
   amount       Float
   category     String
   note         String?
@@ -96,6 +100,17 @@ model Expense {
   created_by   Int
   
   user         User     @relation(fields: [created_by], references: [id])
+}
+
+model TransactionCategory {
+  id         Int      @id @default(autoincrement())
+  name       String
+  type       String   // 'income' or 'expenditure'
+  is_custom  Boolean  @default(false)
+  created_by Int?
+  created_at DateTime @default(now())
+
+  @@unique([name, type])
 }
 
 model HotelGuest {
