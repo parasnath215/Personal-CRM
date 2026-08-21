@@ -175,6 +175,18 @@ router.post('/:id/family', authenticate, async (req, res) => {
   }
 });
 
+// Delete Family Member
+router.delete('/:id/family/:memberId', authenticate, async (req, res) => {
+  try {
+    const memberId = parseInt(req.params.memberId as string);
+    await prisma.familyMember.delete({ where: { id: memberId } });
+    res.json({ success: true, message: 'Family member deleted' });
+  } catch (error) {
+    console.error('Error deleting family member:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Manual trigger for automated birthday & anniversary wishes check
 router.post('/trigger-wishes', authenticate, async (_req, res) => {
   try {

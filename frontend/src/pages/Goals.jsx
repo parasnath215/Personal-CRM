@@ -1,7 +1,14 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
 import Sidebar from '../components/Sidebar';
-import { Target, TrendingUp, Plus, Calendar, DollarSign, Award, X, Save } from 'lucide-react';
+import { Target, TrendingUp, Plus, Calendar, DollarSign, Award, X, Save, Edit3, Trash2, Check } from 'lucide-react';
+
+const toDateInputStr = (dateVal) => {
+  if (!dateVal) return '';
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 export default function Goals() {
   const [goals, setGoals] = useState([]);
@@ -11,6 +18,10 @@ export default function Goals() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newGoal, setNewGoal] = useState({ title: '', target_amount: '', target_date: '', category: 'Personal' });
   const [submittingGoal, setSubmittingGoal] = useState(false);
+
+  // Edit Goal Modal State
+  const [editingGoal, setEditingGoal] = useState(null);
+  const [savingEditGoal, setSavingEditGoal] = useState(false);
 
   // Progress Logging modal state
   const [logProgressGoal, setLogProgressGoal] = useState(null);
@@ -54,6 +65,47 @@ export default function Goals() {
     }
   };
 
+  const handleOpenEditGoal = (goal) => {
+    setEditingGoal({
+      id: goal.id,
+      title: goal.title || '',
+      target_amount: goal.target_amount || '',
+      target_date: toDateInputStr(goal.target_date),
+      category: goal.category || 'Personal'
+    });
+  };
+
+  const handleSaveEditGoal = async (e) => {
+    e.preventDefault();
+    if (!editingGoal || !editingGoal.title.trim()) {
+      alert('Goal title is required.');
+      return;
+    }
+
+    setSavingEditGoal(true);
+    try {
+      await api.put(`/api/goals/${editingGoal.id}`, editingGoal);
+      setEditingGoal(null);
+      fetchGoals();
+    } catch (error) {
+      console.error('Error updating goal:', error);
+      alert(error.response?.data?.error || 'Failed to update goal');
+    } finally {
+      setSavingEditGoal(false);
+    }
+  };
+
+  const handleDeleteGoal = async (id, title) => {
+    if (!window.confirm(`Are you sure you want to delete the goal "${title}"?`)) return;
+    try {
+      await api.delete(`/api/goals/${id}`);
+      fetchGoals();
+    } catch (error) {
+      console.error('Error deleting goal:', error);
+      alert('Failed to delete goal.');
+    }
+  };
+
   const handleLogProgress = async (e) => {
     e.preventDefault();
     if (!logProgressGoal || !progressForm.month || !progressForm.amount_achieved) {
@@ -87,7 +139,7 @@ export default function Goals() {
               Long-Term Goals <Target className="w-6 h-6 text-blue-400" />
             </h2>
             <p className="text-slate-400 text-sm mt-1">
-              Set financial, business, and personal milestones and track your progress over time.
+              Set financial, business, and personal milestones, edit targets, and track your progress over time.
             </p>
           </div>
 
@@ -140,16 +192,31 @@ export default function Goals() {
                         </span>
                         <h3 className="text-xl font-bold text-white mt-2 leading-snug">{goal.title}</h3>
                       </div>
-                      <div className="p-2.5 bg-slate-700/50 text-emerald-400 rounded-xl">
-                        <Award className="w-5 h-5" />
+                      
+                      {/* Action buttons: Edit & Delete */}
+                      <div className="flex items-center gap-1 bg-slate-900/60 p-1 rounded-xl border border-slate-700/60">
+                        <button
+                          onClick={() => handleOpenEditGoal(goal)}
+                          className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"
+                          title="Edit Goal Name & Details"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteGoal(goal.id, goal.title)}
+                          className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                          title="Delete Goal"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
 
                     {/* Progress Bar */}
                     <div className="mt-4 mb-3">
                       <div className="flex justify-between text-xs text-slate-400 mb-1.5 font-medium">
-                        <span>Achieved: ${achieved.toLocaleString()}</span>
-                        <span>Target: ${goal.target_amount.toLocaleString()}</span>
+                        <span>Achieved: ₹{achieved.toLocaleString('en-IN')}</span>
+                        <span>Target: ₹{goal.target_amount.toLocaleString('en-IN')}</span>
                       </div>
                       <div className="w-full bg-slate-900 rounded-full h-3 p-0.5 border border-slate-700/50">
                         <div
@@ -164,7 +231,7 @@ export default function Goals() {
                         <TrendingUp className="w-4 h-4" /> {percentage}% Accomplished
                       </span>
                       <span className="flex items-center gap-1">
-                        <Calendar className="w-3.5 h-3.5 text-slate-400" /> Target Date: {new Date(goal.target_date).toLocaleDateString()}
+                        <Calendar className="w-3.5 h-3.5 text-slate-400" /> Target: {new Date(goal.target_date).toLocaleDateString()}
                       </span>
                     </div>
                   </div>
@@ -213,7 +280,7 @@ export default function Goals() {
                   <input
                     required
                     type="text"
-                    placeholder="e.g. Buy New Office / Save $50k"
+                    placeholder="e.g. Buy New Office / Save ₹5,00,000"
                     value={newGoal.title}
                     onChange={(e) => setNewGoal({ ...newGoal, title: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
@@ -222,14 +289,14 @@ export default function Goals() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Target Amount ($) *</label>
+                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Target Amount (₹) *</label>
                     <input
                       required
                       type="number"
                       placeholder="e.g. 50000"
                       value={newGoal.target_amount}
                       onChange={(e) => setNewGoal({ ...newGoal, target_amount: e.target.value })}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500 font-semibold"
                     />
                   </div>
 
@@ -280,6 +347,93 @@ export default function Goals() {
           </div>
         )}
 
+        {/* Edit Goal Modal */}
+        {editingGoal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+              <div className="flex items-center justify-between mb-5 border-b border-slate-700/60 pb-3">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Edit3 className="w-5 h-5 text-blue-400" /> Edit Long-Term Goal / Task
+                </h3>
+                <button
+                  onClick={() => setEditingGoal(null)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEditGoal} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Goal Name / Title *</label>
+                  <input
+                    required
+                    type="text"
+                    value={editingGoal.title}
+                    onChange={(e) => setEditingGoal({ ...editingGoal, title: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Target Amount (₹) *</label>
+                    <input
+                      required
+                      type="number"
+                      value={editingGoal.target_amount}
+                      onChange={(e) => setEditingGoal({ ...editingGoal, target_amount: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500 font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Category</label>
+                    <select
+                      value={editingGoal.category}
+                      onChange={(e) => setEditingGoal({ ...editingGoal, category: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="Personal">Personal</option>
+                      <option value="Business">Business</option>
+                      <option value="Financial">Financial</option>
+                      <option value="Investment">Investment</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Target Date *</label>
+                  <input
+                    required
+                    type="date"
+                    value={editingGoal.target_date}
+                    onChange={(e) => setEditingGoal({ ...editingGoal, target_date: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-700/60 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setEditingGoal(null)}
+                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-sm font-medium text-slate-300 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingEditGoal}
+                    className="px-5 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-50 shadow-md shadow-blue-900/30 flex items-center gap-1.5"
+                  >
+                    <Check className="w-4 h-4" /> {savingEditGoal ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
         {/* Log Progress Modal */}
         {logProgressGoal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -309,22 +463,23 @@ export default function Goals() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Amount Achieved ($) *</label>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Amount Achieved This Month (₹) *</label>
                   <input
                     required
                     type="number"
-                    placeholder="e.g. 2500"
+                    step="0.01"
+                    placeholder="e.g. 5000"
                     value={progressForm.amount_achieved}
                     onChange={(e) => setProgressForm({ ...progressForm, amount_achieved: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500 font-semibold"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Note (Optional)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Q3 Savings allocation"
+                  <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Notes / Remarks</label>
+                  <textarea
+                    rows={3}
+                    placeholder="e.g. Saved bonus, invested in SIP, etc."
                     value={progressForm.note}
                     onChange={(e) => setProgressForm({ ...progressForm, note: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
@@ -342,9 +497,9 @@ export default function Goals() {
                   <button
                     type="submit"
                     disabled={submittingProgress}
-                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-50 shadow-md shadow-emerald-900/30"
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-50 shadow-md shadow-emerald-900/30 flex items-center gap-1.5"
                   >
-                    {submittingProgress ? 'Saving...' : 'Save Progress'}
+                    <Save className="w-4 h-4" /> {submittingProgress ? 'Saving...' : 'Save Progress'}
                   </button>
                 </div>
               </form>

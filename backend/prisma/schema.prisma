@@ -117,11 +117,15 @@ model HotelGuest {
   id              Int      @id @default(autoincrement())
   name            String
   phone           String
-  id_proof_type   String?
+  id_proof_type   String?  // Aadhaar, PAN, Passport, Driving License, Voter ID, Other
   id_proof_number String?
   check_in        DateTime
   check_out       DateTime?
   room_number     String
+  booking_source  String?  @default("offline") // "website" or "offline"
+  payment_mode    String?  @default("cash") // "cash", "upi", "website", "card"
+  amount_paid     Float?   @default(0)
+  status          String   @default("checked_in") // "checked_in", "checked_out"
   entered_by      Int
   created_at      DateTime @default(now())
   
