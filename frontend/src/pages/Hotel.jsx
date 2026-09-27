@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
 import Sidebar from '../components/Sidebar';
+import * as XLSX from 'xlsx';
 import { 
   Bed, Check, Plus, Search, Calendar, Phone, CreditCard, 
   Globe, Building, User, FileText, CheckCircle2, Clock, 
@@ -26,6 +27,11 @@ export default function Hotel() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // all, check_ins, checked_out, checked_in
+
+  const [dateFilter, setDateFilter] = useState('today'); // yesterday, today, tomorrow, custom
+  const [customDateStart, setCustomDateStart] = useState('');
+  const [customDateEnd, setCustomDateEnd] = useState('');
+  const [showCustomDateModal, setShowCustomDateModal] = useState(false);
 
   const [showCheckInModal, setShowCheckInModal] = useState(false);
 
@@ -144,8 +150,53 @@ export default function Hotel() {
 
   const todayStr = new Date().toDateString();
 
+  const handleExport = () => {
+    if (filteredGuests.length === 0) {
+      alert('No data to export');
+      return;
+    }
+    const exportData = filteredGuests.map(g => ({
+      'Guest Name': g.name,
+      'Phone': g.phone,
+      'Room Number': g.room_number,
+      'ID Type': g.id_proof_type,
+      'ID Number': g.id_proof_number,
+      'Check-In': formatTimestamp(g.check_in),
+      'Check-Out': g.check_out ? formatTimestamp(g.check_out) : 'In-House',
+      'Booking Source': g.booking_source,
+      'Payment Mode': g.payment_mode,
+      'Amount Paid (₹)': g.amount_paid,
+      'Status': g.status === 'checked_in' ? 'In-House' : 'Checked Out'
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Guest Registry');
+    XLSX.writeFile(workbook, `Hotel_Guest_Registry_${new Date().getTime()}.xlsx`);
+  };
+
   // Filtered list
   const filteredGuests = guests.filter(g => {
+    let matchesDate = true;
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    
+    if (dateFilter === 'today') {
+      matchesDate = new Date(g.check_in) <= new Date(today.getTime() + 86400000) && (!g.check_out || new Date(g.check_out) >= today);
+    } else if (dateFilter === 'yesterday') {
+      const yesterday = new Date(today.getTime() - 86400000);
+      matchesDate = new Date(g.check_in) <= new Date(yesterday.getTime() + 86400000) && (!g.check_out || new Date(g.check_out) >= yesterday);
+    } else if (dateFilter === 'tomorrow') {
+      const tomorrow = new Date(today.getTime() + 86400000);
+      matchesDate = new Date(g.check_in) <= new Date(tomorrow.getTime() + 86400000) && (!g.check_out || new Date(g.check_out) >= tomorrow);
+    } else if (dateFilter === 'custom' && customDateStart && customDateEnd) {
+      const start = new Date(customDateStart);
+      const end = new Date(customDateEnd);
+      end.setHours(23,59,59,999);
+      matchesDate = new Date(g.check_in) <= end && (!g.check_out || new Date(g.check_out) >= start);
+    }
+    
+    if (!matchesDate) return false;
+
     const isTodayCheckIn = new Date(g.check_in).toDateString() === todayStr;
 
     if (statusFilter === 'check_ins' && !isTodayCheckIn) return false;
@@ -220,7 +271,7 @@ export default function Hotel() {
             <button onClick={() => setShowCheckInModal(true)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-md shadow-blue-900/20">
               <UserPlus className="w-4 h-4" /> New Check-In
             </button>
-            <button className="p-2 bg-slate-800/50 border border-slate-700/50 rounded-full text-slate-400 hover:text-white transition-colors relative">
+            <button onClick={() => alert('No new notifications')} className="p-2 bg-slate-800/50 border border-slate-700/50 rounded-full text-slate-400 hover:text-white transition-colors relative">
               <Bell className="w-4 h-4" />
               <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-rose-500 rounded-full border border-[#0f111a]"></span>
             </button>
@@ -304,14 +355,14 @@ export default function Hotel() {
         {/* Filters */}
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-2 bg-[#151923] p-1.5 rounded-xl border border-slate-700/50">
-            <button className="px-4 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-colors">Yesterday</button>
-            <button className="px-4 py-2 rounded-lg text-xs font-medium bg-blue-600 text-white shadow-sm flex items-center gap-2">
-              <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
+            <button onClick={() => setDateFilter('yesterday')} className={`px-4 py-2 rounded-lg text-xs font-medium transition-colors ${dateFilter==='yesterday'?'bg-blue-600 text-white shadow-sm':'text-slate-400 hover:text-white'}`}>Yesterday</button>
+            <button onClick={() => setDateFilter('today')} className={`px-4 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-2 ${dateFilter==='today'?'bg-blue-600 text-white shadow-sm':'text-slate-400 hover:text-white'}`}>
+              {dateFilter === 'today' && <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>}
               Today, {new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short' })} (Live)
             </button>
-            <button className="px-4 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-colors">Tomorrow</button>
+            <button onClick={() => setDateFilter('tomorrow')} className={`px-4 py-2 rounded-lg text-xs font-medium transition-colors ${dateFilter==='tomorrow'?'bg-blue-600 text-white shadow-sm':'text-slate-400 hover:text-white'}`}>Tomorrow</button>
             <div className="w-px h-5 bg-slate-700 mx-1"></div>
-            <button className="px-4 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-colors flex items-center gap-1.5">
+            <button onClick={() => setShowCustomDateModal(true)} className={`px-4 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${dateFilter==='custom'?'bg-blue-600 text-white shadow-sm':'text-slate-400 hover:text-white'}`}>
               <Calendar className="w-3.5 h-3.5" /> Custom Date Range
             </button>
           </div>
@@ -336,11 +387,34 @@ export default function Hotel() {
               </button>
             </div>
             
-            <button className="flex items-center gap-1.5 px-4 py-2 bg-[#151923] border border-slate-700/50 hover:bg-slate-700 rounded-xl text-xs font-medium text-slate-300 transition-colors h-[46px]">
+            <button onClick={handleExport} className="flex items-center gap-1.5 px-4 py-2 bg-[#151923] border border-slate-700/50 hover:bg-slate-700 rounded-xl text-xs font-medium text-slate-300 transition-colors h-[46px]">
               <Download className="w-3.5 h-3.5" /> Export
             </button>
           </div>
         </div>
+
+        {/* Custom Date Modal */}
+        {showCustomDateModal && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-[#151923] border border-slate-700/60 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative">
+              <h3 className="text-lg font-bold text-white mb-4">Select Date Range</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Start Date</label>
+                  <input type="date" value={customDateStart} onChange={e => setCustomDateStart(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">End Date</label>
+                  <input type="date" value={customDateEnd} onChange={e => setCustomDateEnd(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none" />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-6">
+                <button onClick={() => setShowCustomDateModal(false)} className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-300 hover:bg-slate-800">Cancel</button>
+                <button onClick={() => { setDateFilter('custom'); setShowCustomDateModal(false); }} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl text-sm font-bold text-white shadow-md">Apply</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Live Guest Registry Table */}
         <div className="bg-[#151923] rounded-2xl border border-slate-700/50 shadow-sm overflow-hidden">
