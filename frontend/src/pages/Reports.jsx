@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../api';
 import Sidebar from '../components/Sidebar';
+import * as XLSX from 'xlsx';
 import { 
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, 
   BarChart, Bar, XAxis, YAxis, CartesianGrid 
@@ -32,12 +33,18 @@ export default function Reports() {
   const [monthlyStatements, setMonthlyStatements] = useState([]);
   const [selectedMonthKey, setSelectedMonthKey] = useState('');
   const [selectedMonthDetail, setSelectedMonthDetail] = useState(null);
+  const detailsRef = useRef(null);
 
   const [transactions, setTransactions] = useState([]);
   const [categories, setCategories] = useState({ income: [], expenditure: [] });
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
+  
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportDateRange, setExportDateRange] = useState({ start: '', end: '' });
 
   // Form State for Adding Transaction
   const [form, setForm] = useState({
@@ -208,8 +215,70 @@ export default function Reports() {
 
   const availableCategories = form.type === 'income' ? categories.income : categories.expenditure;
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterType, searchQuery]);
+
+  useEffect(() => {
+    if (selectedMonthDetail && detailsRef.current) {
+      detailsRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [selectedMonthDetail]);
+
   const handlePrintStatement = () => {
-    window.print();
+    setShowExportModal(true);
+  };
+
+  const handleExportExcel = () => {
+    if (!exportDateRange.start || !exportDateRange.end) {
+      alert('Please select both start and end dates');
+      return;
+    }
+    const start = new Date(exportDateRange.start);
+    const end = new Date(exportDateRange.end);
+    end.setHours(23, 59, 59, 999);
+    
+    const toExport = transactions.filter(t => {
+      const d = new Date(t.spent_on);
+      return d >= start && d <= end;
+    });
+
+    if (toExport.length === 0) {
+      alert('No transactions found in this date range');
+      return;
+    }
+
+    const wsData = toExport.map(t => ({
+      Date: new Date(t.spent_on).toLocaleDateString('en-IN'),
+      Type: (t.type || 'expenditure') === 'income' ? 'Income' : 'Expenditure',
+      Category: t.category,
+      Amount: t.amount,
+      'Payment Mode': t.payment_mode || 'Cash',
+      Remarks: t.note || ''
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(wsData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Statement");
+    XLSX.writeFile(wb, `Financial_Statement_${exportDateRange.start}_to_${exportDateRange.end}.xlsx`);
+    setShowExportModal(false);
+  };
+
+  const handleExportMonthly = () => {
+    if (!selectedMonthDetail || !selectedMonthDetail.transactions) return;
+    const wsData = selectedMonthDetail.transactions.map(t => ({
+      Date: new Date(t.spent_on).toLocaleDateString('en-IN'),
+      Type: (t.type || 'expenditure') === 'income' ? 'Income' : 'Expenditure',
+      Category: t.category,
+      Amount: t.amount,
+      'Payment Mode': t.payment_mode || 'Cash',
+      Remarks: t.note || ''
+    }));
+    
+    const ws = XLSX.utils.json_to_sheet(wsData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Monthly Statement");
+    XLSX.writeFile(wb, `Monthly_Statement_${selectedMonthDetail.label}.xlsx`);
   };
 
   return (
@@ -450,7 +519,7 @@ export default function Reports() {
 
             {/* Selected Month Detailed Statement Card & Ledger Table */}
             {selectedMonthDetail && (
-              <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-xl space-y-6">
+              <div ref={detailsRef} className="bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-xl space-y-6">
                 
                 {/* Statement Top Header */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-700">
@@ -469,6 +538,12 @@ export default function Reports() {
                   </div>
 
                   <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleExportMonthly}
+                      className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-emerald-400 hover:text-emerald-300 px-4 py-2 rounded-xl text-xs font-semibold border border-slate-600 transition-colors shadow-sm"
+                    >
+                      <Download className="w-4 h-4" /> Export Monthly
+                    </button>
                     <button
                       onClick={handlePrintStatement}
                       className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 hover:text-white px-4 py-2 rounded-xl text-xs font-semibold border border-slate-600 transition-colors shadow-sm"
@@ -904,7 +979,7 @@ export default function Reports() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-700/50">
-                    {filteredTransactions.map(t => {
+                    {filteredTransactions.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map(t => {
                       const isIncome = (t.type || 'expenditure') === 'income';
                       return (
                         <tr key={t.id} className="hover:bg-slate-700/30 transition-colors">
@@ -947,6 +1022,37 @@ export default function Reports() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {/* Pagination Controls */}
+            {filteredTransactions.length > itemsPerPage && (
+              <div className="flex items-center justify-center gap-2 mt-6">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 disabled:opacity-50 text-sm font-medium transition-colors"
+                >
+                  Previous
+                </button>
+                <div className="flex gap-1 overflow-x-auto max-w-[200px] sm:max-w-full">
+                  {Array.from({ length: Math.ceil(filteredTransactions.length / itemsPerPage) }).map((_, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setCurrentPage(idx + 1)}
+                      className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${currentPage === idx + 1 ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                    >
+                      {idx + 1}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredTransactions.length / itemsPerPage), prev + 1))}
+                  disabled={currentPage === Math.ceil(filteredTransactions.length / itemsPerPage)}
+                  className="px-3 py-1 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 disabled:opacity-50 text-sm font-medium transition-colors"
+                >
+                  Next
+                </button>
               </div>
             )}
           </div>
@@ -1062,6 +1168,52 @@ export default function Reports() {
                 </div>
               </div>
 
+            </div>
+          </div>
+        )}
+
+        {/* Export Excel Modal */}
+        {showExportModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+            <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative">
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="absolute right-4 top-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+                <Download className="w-5 h-5 text-blue-400" />
+                Export Statement
+              </h3>
+              <p className="text-xs text-slate-400 mb-4">Select date range to export transactions to Excel.</p>
+              
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Start Date</label>
+                  <input
+                    type="date"
+                    value={exportDateRange.start}
+                    onChange={e => setExportDateRange({ ...exportDateRange, start: e.target.value })}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">End Date</label>
+                  <input
+                    type="date"
+                    value={exportDateRange.end}
+                    onChange={e => setExportDateRange({ ...exportDateRange, end: e.target.value })}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+              <button
+                onClick={handleExportExcel}
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-sm transition-colors shadow-md"
+              >
+                Download Excel Sheet
+              </button>
             </div>
           </div>
         )}

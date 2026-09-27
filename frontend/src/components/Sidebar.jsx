@@ -15,13 +15,17 @@ export default function Sidebar() {
     { name: 'Settings', path: '/settings', icon: Settings },
   ];
 
+  const filteredNavItems = user?.role === 'hotel_staff'
+    ? navItems.filter(item => item.name === 'Hotel Guests')
+    : navItems;
+
   return (
     <div className="w-64 bg-slate-800 border-r border-slate-700 min-h-screen flex flex-col text-slate-300">
       <div className="p-6">
         <h1 className="text-2xl font-bold text-white tracking-wider text-center">CRM</h1>
       </div>
       <div className="flex-1 px-4 space-y-2">
-        {navItems.map((item) => (
+        {filteredNavItems.map((item) => (
           <NavLink
             key={item.name}
             to={item.path}

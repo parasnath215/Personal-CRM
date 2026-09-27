@@ -4,7 +4,7 @@ import Sidebar from '../components/Sidebar';
 import { 
   Bed, Check, Plus, Search, Calendar, Phone, CreditCard, 
   Globe, Building, User, FileText, CheckCircle2, Clock, 
-  LogOut, Edit3, Trash2, X, DollarSign, Filter, Sparkles, ArrowRight
+  LogOut, Edit3, Trash2, X, DollarSign, Filter, ArrowDownRight, ArrowUpRight, Wallet, Download, UserPlus, Bell
 } from 'lucide-react';
 
 const formatDateTimeLocal = (dateObj = new Date()) => {
@@ -25,8 +25,9 @@ export default function Hotel() {
   const [guests, setGuests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all'); // all, checked_in, checked_out
-  const [sourceFilter, setSourceFilter] = useState('all'); // all, website, offline
+  const [statusFilter, setStatusFilter] = useState('all'); // all, check_ins, checked_out, checked_in
+
+  const [showCheckInModal, setShowCheckInModal] = useState(false);
 
   // New Check-in Form State
   const [form, setForm] = useState({
@@ -88,6 +89,7 @@ export default function Hotel() {
         amount_paid: '',
         status: 'checked_in'
       });
+      setShowCheckInModal(false);
       fetchGuests();
     } catch (error) {
       console.error('Failed to create guest', error);
@@ -140,10 +142,15 @@ export default function Hotel() {
     }
   };
 
+  const todayStr = new Date().toDateString();
+
   // Filtered list
   const filteredGuests = guests.filter(g => {
-    if (statusFilter !== 'all' && (g.status || 'checked_in') !== statusFilter) return false;
-    if (sourceFilter !== 'all' && (g.booking_source || 'offline') !== sourceFilter) return false;
+    const isTodayCheckIn = new Date(g.check_in).toDateString() === todayStr;
+
+    if (statusFilter === 'check_ins' && !isTodayCheckIn) return false;
+    if (statusFilter === 'checked_in' && (g.status || 'checked_in') !== 'checked_in') return false;
+    if (statusFilter === 'checked_out' && g.status !== 'checked_out') return false;
     
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -156,10 +163,15 @@ export default function Hotel() {
     return true;
   });
 
-  // Calculate high-level stats
   const activeInHouse = guests.filter(g => (g.status || 'checked_in') === 'checked_in');
   const checkedOutCount = guests.filter(g => g.status === 'checked_out').length;
+  
+  const todayCheckIns = guests.filter(g => new Date(g.check_in).toDateString() === todayStr);
+  const todayCheckOuts = guests.filter(g => g.check_out && new Date(g.check_out).toDateString() === todayStr);
+  
   const totalRevenue = guests.reduce((sum, g) => sum + (Number(g.amount_paid) || 0), 0);
+  const cashRevenue = guests.filter(g => g.payment_mode === 'cash' || !g.payment_mode).reduce((sum, g) => sum + (Number(g.amount_paid) || 0), 0);
+  const otherRevenue = totalRevenue - cashRevenue;
 
   const formatTimestamp = (dVal) => {
     if (!dVal) return '-';
@@ -174,618 +186,549 @@ export default function Hotel() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex text-slate-200">
+    <div className="min-h-screen bg-[#0f111a] flex text-slate-200 font-sans">
       <Sidebar />
-      <main className="flex-1 p-4 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full">
-        {/* Header */}
-        <header className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-2">
-              Hotel Management <Bed className="w-7 h-7 text-blue-400" />
-            </h2>
-            <p className="text-slate-400 mt-1">
-              Complete guest registry, check-in/out timestamps, Aadhaar ID verification, booking channels & payments.
-            </p>
+      <main className="flex-1 p-6 md:p-8 overflow-y-auto w-full">
+        
+        {/* Top Header */}
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 bg-slate-800/40 px-3 py-1.5 rounded-full border border-slate-700/50">
+              <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+              <span className="text-xs font-semibold text-emerald-400 uppercase">FRONT DESK 01</span>
+            </div>
+            <div className="text-xs font-medium text-slate-400">
+              Shift <span className="text-white">Active</span> • {new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} IST
+            </div>
+          </div>
+          
+          <div className="flex-1 max-w-xl mx-4">
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search guests, rooms, reservations, ID..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full bg-[#151923] border border-slate-700/50 rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+              />
+              <div className="absolute right-2 top-2 bg-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-400 font-mono border border-slate-700">⌘K</div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button onClick={() => setShowCheckInModal(true)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-md shadow-blue-900/20">
+              <UserPlus className="w-4 h-4" /> New Check-In
+            </button>
+            <button className="p-2 bg-slate-800/50 border border-slate-700/50 rounded-full text-slate-400 hover:text-white transition-colors relative">
+              <Bell className="w-4 h-4" />
+              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-rose-500 rounded-full border border-[#0f111a]"></span>
+            </button>
+            <div className="w-9 h-9 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-xs font-bold text-slate-300 ml-1">
+              RK
+            </div>
           </div>
         </header>
 
-        {/* Top Summary Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
-          <div className="bg-slate-800/80 rounded-2xl p-5 border border-blue-500/20 shadow-md backdrop-blur-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">In-House Guests</span>
-              <div className="p-2 bg-blue-500/10 rounded-xl text-blue-400">
-                <Bed className="w-5 h-5" />
+        {/* 4 Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+          <div className="bg-slate-800/30 rounded-2xl p-5 border border-slate-700/40 shadow-sm backdrop-blur-sm">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">IN-HOUSE GUESTS</span>
+              <div className="p-1.5 bg-emerald-500/10 rounded-lg text-emerald-400">
+                <Bed className="w-4 h-4" />
               </div>
             </div>
-            <h3 className="text-3xl font-extrabold text-white mt-3">{activeInHouse.length}</h3>
-            <p className="text-xs text-slate-400 mt-1">Currently checked in</p>
+            <div className="flex items-end gap-3 mb-4">
+              <h3 className="text-4xl font-extrabold text-white leading-none">{activeInHouse.length}</h3>
+              <span className="text-xs font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 mb-1">82% Occupancy</span>
+            </div>
+            <div className="flex items-center justify-between text-xs text-slate-400 pt-3 border-t border-slate-700/50">
+              <span>{activeInHouse.length} Rooms occupied</span>
+              <span className="text-blue-400 font-medium">Available</span>
+            </div>
           </div>
 
-          <div className="bg-slate-800/80 rounded-2xl p-5 border border-purple-500/20 shadow-md backdrop-blur-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-purple-400">Completed Stays</span>
-              <div className="p-2 bg-purple-500/10 rounded-xl text-purple-400">
-                <CheckCircle2 className="w-5 h-5" />
+          <div className="bg-slate-800/30 rounded-2xl p-5 border border-slate-700/40 shadow-sm backdrop-blur-sm">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">TODAY CHECK-INS</span>
+              <div className="p-1.5 bg-blue-500/10 rounded-lg text-blue-400">
+                <ArrowDownRight className="w-4 h-4" />
               </div>
             </div>
-            <h3 className="text-3xl font-extrabold text-white mt-3">{checkedOutCount}</h3>
-            <p className="text-xs text-slate-400 mt-1">Checked out records</p>
+            <div className="flex items-end gap-3 mb-4">
+              <h3 className="text-4xl font-extrabold text-white leading-none">{todayCheckIns.length} <span className="text-sm font-normal text-slate-400 ml-1">Guests</span></h3>
+              <span className="text-xs font-medium text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20 mb-1">{todayCheckIns.length} Processed</span>
+            </div>
+            <div className="flex items-center justify-between text-xs text-slate-400 pt-3 border-t border-slate-700/50">
+              <span>Arriving later</span>
+              <span className="text-slate-500">Next: <span className="text-slate-300">N/A</span></span>
+            </div>
           </div>
 
-          <div className="bg-slate-800/80 rounded-2xl p-5 border border-emerald-500/20 shadow-md backdrop-blur-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400">Total Collections</span>
-              <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-400">
-                <DollarSign className="w-5 h-5" />
+          <div className="bg-slate-800/30 rounded-2xl p-5 border border-slate-700/40 shadow-sm backdrop-blur-sm">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">CHECK-OUTS DUE</span>
+              <div className="p-1.5 bg-rose-500/10 rounded-lg text-rose-400">
+                <ArrowUpRight className="w-4 h-4" />
               </div>
             </div>
-            <h3 className="text-3xl font-extrabold text-white mt-3">₹{totalRevenue.toLocaleString('en-IN')}</h3>
-            <p className="text-xs text-slate-400 mt-1">Total revenue collected</p>
+            <div className="flex items-end gap-3 mb-4">
+              <h3 className="text-4xl font-extrabold text-white leading-none">{todayCheckOuts.length} <span className="text-sm font-normal text-slate-400 ml-1">Rooms</span></h3>
+              <span className="text-xs font-medium text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20 mb-1">Due</span>
+            </div>
+            <div className="flex items-center justify-between text-xs text-slate-400 pt-3 border-t border-slate-700/50">
+              <span>{checkedOutCount} Completed total</span>
+              <span className="text-rose-400 font-medium">Overdue Check</span>
+            </div>
+          </div>
+
+          <div className="bg-slate-800/30 rounded-2xl p-5 border border-slate-700/40 shadow-sm backdrop-blur-sm">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">TODAY COLLECTIONS</span>
+              <div className="p-1.5 bg-emerald-500/10 rounded-lg text-emerald-400">
+                <Wallet className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="flex items-end gap-3 mb-4">
+              <h3 className="text-3xl font-extrabold text-white leading-none">₹{totalRevenue.toLocaleString('en-IN')}</h3>
+              <span className="text-xs font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 mb-1">100% Settled</span>
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-slate-400 pt-3 border-t border-slate-700/50">
+              <span>Cash: <span className="text-slate-300">₹{cashRevenue.toLocaleString('en-IN')}</span></span>
+              <span>UPI/Card: <span className="text-slate-300">₹{otherRevenue.toLocaleString('en-IN')}</span></span>
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-          {/* Left Column: Comprehensive Check-In Form */}
-          <div className="xl:col-span-4">
-            <div className="bg-slate-800 rounded-2xl p-6 shadow-md border border-slate-700 sticky top-6">
-              <div className="flex items-center justify-between mb-5 border-b border-slate-700/60 pb-3">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Plus className="w-5 h-5 text-blue-400" /> New Guest Check-In
-                </h3>
-                <span className="text-[11px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-0.5 rounded-full font-medium">
-                  Direct Entry
-                </span>
-              </div>
+        {/* Filters */}
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
+          <div className="flex items-center gap-2 bg-[#151923] p-1.5 rounded-xl border border-slate-700/50">
+            <button className="px-4 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-colors">Yesterday</button>
+            <button className="px-4 py-2 rounded-lg text-xs font-medium bg-blue-600 text-white shadow-sm flex items-center gap-2">
+              <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
+              Today, {new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short' })} (Live)
+            </button>
+            <button className="px-4 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-colors">Tomorrow</button>
+            <div className="w-px h-5 bg-slate-700 mx-1"></div>
+            <button className="px-4 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-colors flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5" /> Custom Date Range
+            </button>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1 bg-[#151923] p-1.5 rounded-xl border border-slate-700/50">
+              <button onClick={() => setStatusFilter('all')} className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold flex flex-col items-center ${statusFilter==='all'?'bg-slate-700/80 text-white':'text-slate-400 hover:text-white'}`}>
+                <span>All</span>
+                <span className={`${statusFilter==='all'?'text-slate-300':'text-slate-500'} font-normal`}>{guests.length}</span>
+              </button>
+              <button onClick={() => setStatusFilter('check_ins')} className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold flex flex-col items-center ${statusFilter==='check_ins'?'bg-slate-700/80 text-white':'text-slate-400 hover:text-white'}`}>
+                <span>Check-Ins</span>
+                <span className="text-blue-400 font-normal">{todayCheckIns.length}</span>
+              </button>
+              <button onClick={() => setStatusFilter('checked_out')} className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold flex flex-col items-center ${statusFilter==='checked_out'?'bg-slate-700/80 text-white':'text-slate-400 hover:text-white'}`}>
+                <span>Check-Outs</span>
+                <span className="text-rose-400 font-normal">{checkedOutCount}</span>
+              </button>
+              <button onClick={() => setStatusFilter('checked_in')} className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold flex flex-col items-center ${statusFilter==='checked_in'?'bg-slate-700/80 text-white':'text-slate-400 hover:text-white'}`}>
+                <span>In-House</span>
+                <span className="text-emerald-400 font-normal">{activeInHouse.length}</span>
+              </button>
+            </div>
+            
+            <button className="flex items-center gap-1.5 px-4 py-2 bg-[#151923] border border-slate-700/50 hover:bg-slate-700 rounded-xl text-xs font-medium text-slate-300 transition-colors h-[46px]">
+              <Download className="w-3.5 h-3.5" /> Export
+            </button>
+          </div>
+        </div>
 
-              <form onSubmit={handleCreateGuest} className="space-y-4">
-                {/* Guest Name */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Guest Full Name *</label>
-                  <div className="relative">
-                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                    <input 
-                      required 
-                      type="text" 
-                      placeholder="e.g. Ramesh Kumar" 
-                      value={form.name} 
-                      onChange={e => setForm({...form, name: e.target.value})} 
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500" 
-                    />
-                  </div>
-                </div>
-
-                {/* Phone & Room Number */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Phone Number *</label>
-                    <div className="relative">
-                      <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                      <input 
-                        required 
-                        type="text" 
-                        placeholder="+91..." 
-                        value={form.phone} 
-                        onChange={e => setForm({...form, phone: e.target.value})} 
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 font-mono" 
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Room Number *</label>
-                    <div className="relative">
-                      <Bed className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                      <input 
-                        required 
-                        type="text" 
-                        placeholder="e.g. 104 / Deluxe 2" 
-                        value={form.room_number} 
-                        onChange={e => setForm({...form, room_number: e.target.value})} 
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 font-medium" 
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* ID Proof Type & Aadhaar / ID Detail */}
-                <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-700/80 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5 uppercase">
-                      <FileText className="w-3.5 h-3.5 text-blue-400" /> ID Verification
-                    </span>
-                    <span className="text-[11px] text-amber-400">Govt ID Proof</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-2.5">
-                    <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">ID Document Type</label>
-                      <select
-                        value={form.id_proof_type}
-                        onChange={e => setForm({...form, id_proof_type: e.target.value})}
-                        className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none"
-                      >
-                        <option value="Aadhaar Card">Aadhaar Card</option>
-                        <option value="PAN Card">PAN Card</option>
-                        <option value="Driving License">Driving License</option>
-                        <option value="Passport">Passport</option>
-                        <option value="Voter ID">Voter ID</option>
-                        <option value="Other ID">Other ID Proof</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Aadhaar / ID Number Detail</label>
-                      <input 
-                        type="text" 
-                        placeholder="e.g. 4589 1234 5678" 
-                        value={form.id_proof_number} 
-                        onChange={e => setForm({...form, id_proof_number: e.target.value})} 
-                        className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 font-mono" 
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Check-In & Check-Out Date & Timing */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1 flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-emerald-400" /> Check-In Date & Timing *
-                    </label>
-                    <input 
-                      required 
-                      type="datetime-local" 
-                      value={form.check_in} 
-                      onChange={e => setForm({...form, check_in: e.target.value})} 
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500" 
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1 flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-rose-400" /> Check-Out Date & Timing
-                    </label>
-                    <input 
-                      type="datetime-local" 
-                      value={form.check_out} 
-                      onChange={e => setForm({...form, check_out: e.target.value})} 
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500" 
-                    />
-                  </div>
-                </div>
-
-                {/* Booking Source & Payment Mode */}
-                <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-700/80 space-y-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 uppercase mb-1.5 flex items-center gap-1.5">
-                      <Globe className="w-3.5 h-3.5 text-indigo-400" /> Booking Source Channel
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setForm({ ...form, booking_source: 'offline' })}
-                        className={`py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all ${
-                          form.booking_source === 'offline'
-                            ? 'bg-blue-600 border-blue-500 text-white shadow-sm'
-                            : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        <Building className="w-3.5 h-3.5" /> Offline / Walk-in
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setForm({ ...form, booking_source: 'website' })}
-                        className={`py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all ${
-                          form.booking_source === 'website'
-                            ? 'bg-indigo-600 border-indigo-500 text-white shadow-sm'
-                            : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        <Globe className="w-3.5 h-3.5" /> Website Booking
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2.5 pt-1">
-                    <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Payment Method</label>
-                      <select
-                        value={form.payment_mode}
-                        onChange={e => setForm({...form, payment_mode: e.target.value})}
-                        className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none"
-                      >
-                        <option value="cash">Cash</option>
-                        <option value="upi">UPI (GPay/PhonePe)</option>
-                        <option value="website">Website Booking</option>
-                        <option value="card">Credit / Debit Card</option>
-                        <option value="other">Other</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Amount Paid (₹)</label>
-                      <input 
-                        type="number" 
-                        step="0.01" 
-                        placeholder="0.00" 
-                        value={form.amount_paid} 
-                        onChange={e => setForm({...form, amount_paid: e.target.value})} 
-                        className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 font-semibold" 
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <button 
-                  type="submit" 
-                  className="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded-xl text-white font-bold transition-all shadow-md shadow-blue-900/30 flex items-center justify-center gap-2"
-                >
-                  <Check className="w-4 h-4" /> Check In Guest
-                </button>
-              </form>
+        {/* Live Guest Registry Table */}
+        <div className="bg-[#151923] rounded-2xl border border-slate-700/50 shadow-sm overflow-hidden">
+          <div className="p-5 border-b border-slate-700/50 flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-bold text-white mb-0.5">Live Guest Registry</h3>
+              <p className="text-xs text-slate-400">Real-time room occupancy, verification and payment ledger</p>
+            </div>
+            <div className="text-xs text-slate-400 font-mono bg-slate-800/60 px-3 py-1.5 rounded-lg border border-slate-700/50">
+              Showing {filteredGuests.length} Records
             </div>
           </div>
 
-          {/* Right Column: Guest Directory & Management */}
-          <div className="xl:col-span-8 space-y-6">
-            <div className="bg-slate-800 rounded-2xl p-6 shadow-md border border-slate-700">
-              
-              {/* Filter and Search Bar */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-slate-700/60">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-slate-400 uppercase font-semibold flex items-center gap-1">
-                    <Filter className="w-3.5 h-3.5" /> Status:
-                  </span>
-                  <div className="flex bg-slate-900 rounded-xl p-1 border border-slate-700 text-xs">
-                    <button
-                      onClick={() => setStatusFilter('all')}
-                      className={`px-3 py-1 rounded-lg font-medium transition-all ${
-                        statusFilter === 'all' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      All ({guests.length})
-                    </button>
-                    <button
-                      onClick={() => setStatusFilter('checked_in')}
-                      className={`px-3 py-1 rounded-lg font-medium transition-all ${
-                        statusFilter === 'checked_in' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      In-House ({activeInHouse.length})
-                    </button>
-                    <button
-                      onClick={() => setStatusFilter('checked_out')}
-                      className={`px-3 py-1 rounded-lg font-medium transition-all ${
-                        statusFilter === 'checked_out' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      Checked Out ({checkedOutCount})
-                    </button>
-                  </div>
-                </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-900/40 text-[10px] uppercase font-bold tracking-wider text-slate-500 border-b border-slate-700/50">
+                  <th className="py-3.5 px-6">GUEST & VERIFICATION</th>
+                  <th className="py-3.5 px-6">ROOM & TIER</th>
+                  <th className="py-3.5 px-6">STAY TIMELINE</th>
+                  <th className="py-3.5 px-6">CHANNEL & BILLING</th>
+                  <th className="py-3.5 px-6">STATUS</th>
+                  <th className="py-3.5 px-6 text-right">QUICK ACTION</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-700/50">
+                {filteredGuests.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="py-12 text-center text-slate-400">
+                      No guests found matching filters.
+                    </td>
+                  </tr>
+                ) : filteredGuests.map(guest => {
+                  const isCheckedIn = (guest.status || 'checked_in') === 'checked_in';
+                  const isWebsite = guest.booking_source === 'website';
+                  const initials = guest.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
-                <div className="flex items-center gap-2">
-                  <div className="relative w-full sm:w-64">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                    <input
-                      type="text"
-                      placeholder="Search guest, phone, room, ID..."
-                      value={searchQuery}
-                      onChange={e => setSearchQuery(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Guest Registry List */}
-              {loading ? (
-                <div className="py-16 text-center text-slate-400">Loading guest registry...</div>
-              ) : filteredGuests.length === 0 ? (
-                <div className="py-16 text-center bg-slate-900/40 rounded-xl border border-dashed border-slate-700">
-                  <Bed className="w-10 h-10 text-slate-600 mx-auto mb-2 opacity-50" />
-                  <p className="text-slate-300 font-medium">No guest records found</p>
-                  <p className="text-xs text-slate-500 mt-0.5">Adjust your filters or add a new guest check-in from the form.</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {filteredGuests.map(guest => {
-                    const isCheckedIn = (guest.status || 'checked_in') === 'checked_in';
-                    const isWebsite = guest.booking_source === 'website';
-
-                    return (
-                      <div 
-                        key={guest.id} 
-                        className={`rounded-2xl p-5 border transition-all ${
-                          isCheckedIn 
-                            ? 'bg-slate-900/90 border-slate-700 hover:border-slate-600 shadow-sm' 
-                            : 'bg-slate-900/40 border-slate-800 text-slate-400'
-                        }`}
-                      >
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                          
-                          {/* Left: Guest & Room Info */}
-                          <div className="flex-1">
-                            <div className="flex flex-wrap items-center gap-2.5 mb-1.5">
-                              <h4 className="text-lg font-bold text-white flex items-center gap-2">
-                                {guest.name}
-                              </h4>
-
-                              {/* Room Badge */}
-                              <span className="text-xs font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-0.5 rounded-lg">
-                                Room {guest.room_number}
-                              </span>
-
-                              {/* Status Badge */}
-                              <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${
-                                isCheckedIn 
-                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                                  : 'bg-purple-500/10 text-purple-300 border-purple-500/20'
-                              }`}>
-                                {isCheckedIn ? '● Currently In-House' : '✓ Checked Out'}
-                              </span>
-
-                              {/* Booking Source Badge */}
-                              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-md border flex items-center gap-1 ${
-                                isWebsite
-                                  ? 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20'
-                                  : 'bg-slate-700/50 text-slate-300 border-slate-600/50'
-                              }`}>
-                                {isWebsite ? <Globe className="w-3 h-3 text-indigo-400" /> : <Building className="w-3 h-3 text-slate-400" />}
-                                {isWebsite ? 'Website Booking' : 'Offline / Walk-in'}
-                              </span>
-                            </div>
-
-                            {/* Contact & ID Details */}
-                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-300 mt-2">
-                              <span className="flex items-center gap-1 font-mono text-slate-200">
-                                <Phone className="w-3.5 h-3.5 text-emerald-400" /> {guest.phone}
-                              </span>
-
-                              {guest.id_proof_number ? (
-                                <span className="flex items-center gap-1 bg-slate-800 px-2 py-0.5 rounded border border-slate-700 text-amber-300 font-mono">
-                                  <FileText className="w-3.5 h-3.5 text-amber-400" /> 
-                                  {guest.id_proof_type || 'ID'}: {guest.id_proof_number}
-                                </span>
-                              ) : (
-                                <span className="text-slate-500 italic text-[11px]">(No ID proof recorded)</span>
-                              )}
-                            </div>
-
-                            {/* Timestamps & Payment details */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-800 text-xs">
-                              <div className="flex items-center gap-1.5 text-slate-300">
-                                <Clock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                                <span>Check-In: <strong>{formatTimestamp(guest.check_in)}</strong></span>
-                              </div>
-
-                              <div className="flex items-center gap-1.5 text-slate-300">
-                                <LogOut className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                                <span>Check-Out: <strong>{guest.check_out ? formatTimestamp(guest.check_out) : 'Open'}</strong></span>
-                              </div>
-
-                              <div className="flex items-center gap-1.5 text-slate-300">
-                                <CreditCard className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                                <span>Paid via: <strong className="uppercase">{guest.payment_mode || 'Cash'}</strong></span>
-                              </div>
-
-                              <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-                                <DollarSign className="w-3.5 h-3.5 shrink-0" />
-                                <span>Amount: ₹{(Number(guest.amount_paid) || 0).toLocaleString('en-IN')}</span>
-                              </div>
+                  return (
+                    <tr key={guest.id} className="hover:bg-slate-800/40 transition-colors group">
+                      <td className="py-4 px-6">
+                        <div className="flex items-start gap-4">
+                          <div className="w-10 h-10 rounded-full bg-slate-700/80 border border-slate-600 flex items-center justify-center text-xs font-bold text-slate-300 shrink-0 mt-0.5">
+                            {initials}
+                          </div>
+                          <div>
+                            <div className="font-bold text-slate-200 text-sm mb-0.5">{guest.name}</div>
+                            <div className="text-[11px] text-slate-400 font-mono mb-2">+91 {guest.phone.replace('+91', '').trim()}</div>
+                            <div className="inline-flex items-center gap-1.5 bg-slate-800 px-2 py-0.5 rounded-md border border-slate-700">
+                              <FileText className="w-3 h-3 text-emerald-400" />
+                              <span className="text-[10px] text-emerald-400 font-medium">{guest.id_proof_type || 'ID'}</span>
+                              <span className="text-[10px] text-blue-400 font-mono">{guest.id_proof_number || 'Verified'}</span>
                             </div>
                           </div>
-
-                          {/* Right: Actions */}
-                          <div className="flex sm:flex-col items-center justify-end gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800">
-                            {isCheckedIn && (
-                              <button
-                                onClick={() => handleQuickCheckOut(guest)}
-                                className="flex items-center gap-1 bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-                                title="Check Out Guest"
-                              >
-                                <LogOut className="w-3.5 h-3.5" /> Check Out
-                              </button>
-                            )}
-
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                onClick={() => setEditingGuest({
-                                  ...guest,
-                                  check_in: formatDateTimeLocal(guest.check_in),
-                                  check_out: guest.check_out ? formatDateTimeLocal(guest.check_out) : '',
-                                  amount_paid: guest.amount_paid !== null ? guest.amount_paid : ''
-                                })}
-                                className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-xl transition-colors"
-                                title="Edit Guest Details"
-                              >
-                                <Edit3 className="w-4 h-4" />
-                              </button>
-
-                              <button
-                                onClick={() => handleDeleteGuest(guest.id)}
-                                className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors"
-                                title="Delete Record"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                      </td>
+                      
+                      <td className="py-4 px-6">
+                        <div className="font-bold text-blue-400 mb-0.5">Room {guest.room_number}</div>
+                        <div className="text-[11px] text-slate-400">Deluxe Tier</div>
+                      </td>
+                      
+                      <td className="py-4 px-6">
+                        <div className="flex flex-col gap-2 text-[11px] font-mono">
+                          <div className="flex items-center gap-2">
+                            <span className="text-emerald-500/70 text-[9px] uppercase font-bold w-4">IN</span>
+                            <span className="text-slate-300">{formatTimestamp(guest.check_in).replace(',', '')}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-rose-500/70 text-[9px] uppercase font-bold w-4">OUT</span>
+                            <span className="text-slate-400">{guest.check_out ? formatTimestamp(guest.check_out).replace(',', '') : 'TBD'}</span>
+                          </div>
+                        </div>
+                      </td>
+                      
+                      <td className="py-4 px-6">
+                        <div className="text-[11px] text-indigo-300 font-medium mb-1.5">{isWebsite ? 'Web Direct' : 'Direct / Walk-In'}</div>
+                        <div className="text-[11px] text-emerald-400 font-medium flex items-center gap-1.5">
+                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"></div>
+                          Paid <span className="uppercase">{guest.payment_mode || 'Cash'}</span> <span className="font-bold text-white ml-0.5">₹{guest.amount_paid}</span>
+                        </div>
+                      </td>
 
-            </div>
+                      <td className="py-4 px-6">
+                        {isCheckedIn ? (
+                          <span className="inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full text-[11px] font-semibold">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"></div>
+                            In-House
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 bg-slate-700/50 text-slate-400 border border-slate-600/50 px-2.5 py-1 rounded-full text-[11px] font-semibold">
+                            <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
+                            Checked-Out
+                          </span>
+                        )}
+                      </td>
+                      
+                      <td className="py-4 px-6 text-right">
+                        <div className="flex items-center justify-end gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => {
+                              setEditingGuest({
+                                ...guest,
+                                check_in: formatDateTimeLocal(guest.check_in),
+                                check_out: guest.check_out ? formatDateTimeLocal(guest.check_out) : '',
+                                amount_paid: guest.amount_paid !== null ? guest.amount_paid : ''
+                              });
+                            }}
+                            className="px-4 py-1.5 rounded-lg border border-slate-700 bg-slate-800/80 text-[11px] font-semibold text-slate-300 hover:text-white transition-colors"
+                          >
+                            Folio
+                          </button>
+                          {isCheckedIn ? (
+                            <button
+                              onClick={() => handleQuickCheckOut(guest)}
+                              className="px-4 py-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 text-[11px] font-semibold text-blue-400 hover:bg-blue-600 hover:text-white transition-colors"
+                            >
+                              Check Out
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleDeleteGuest(guest.id)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:bg-rose-500/10 hover:text-rose-400 transition-colors"
+                              title="Delete Record"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
 
-        {/* Edit Guest Modal */}
-        {editingGuest && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-lg p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-5 border-b border-slate-700/60 pb-3">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Edit3 className="w-5 h-5 text-blue-400" /> Edit Guest Record
+        {/* Check-In Modal */}
+        {showCheckInModal && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-[#151923] border border-slate-700/60 rounded-2xl w-full max-w-2xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-5 border-b border-slate-700/60 pb-4">
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <UserPlus className="w-5 h-5 text-blue-400" /> New Guest Check-In
                 </h3>
                 <button 
-                  onClick={() => setEditingGuest(null)}
-                  className="text-slate-400 hover:text-white p-1 rounded-lg transition-colors"
+                  onClick={() => setShowCheckInModal(false)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <form onSubmit={handleSaveEdit} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Guest Full Name *</label>
-                  <input
-                    required
-                    type="text"
-                    value={editingGuest.name}
-                    onChange={e => setEditingGuest({...editingGuest, name: e.target.value})}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-                  />
+              <form onSubmit={handleCreateGuest} className="space-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Guest Full Name *</label>
+                      <input 
+                        required type="text" placeholder="e.g. Ramesh Kumar" 
+                        value={form.name} onChange={e => setForm({...form, name: e.target.value})} 
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Phone Number *</label>
+                      <input 
+                        required type="text" placeholder="+91..." 
+                        value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} 
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 font-mono" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Room Number *</label>
+                      <input 
+                        required type="text" placeholder="e.g. 104" 
+                        value={form.room_number} onChange={e => setForm({...form, room_number: e.target.value})} 
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 font-medium" 
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/60">
+                      <label className="block text-[11px] font-bold text-slate-400 uppercase mb-3">ID Verification</label>
+                      <div className="space-y-3">
+                        <select
+                          value={form.id_proof_type} onChange={e => setForm({...form, id_proof_type: e.target.value})}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none"
+                        >
+                          <option value="Aadhaar Card">Aadhaar Card</option>
+                          <option value="PAN Card">PAN Card</option>
+                          <option value="Passport">Passport</option>
+                          <option value="Driving License">Driving License</option>
+                        </select>
+                        <input 
+                          type="text" placeholder="ID Number" 
+                          value={form.id_proof_number} onChange={e => setForm({...form, id_proof_number: e.target.value})} 
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none font-mono" 
+                        />
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Check-In Date/Time</label>
+                      <input 
+                        required type="datetime-local" value={form.check_in} onChange={e => setForm({...form, check_in: e.target.value})} 
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500" 
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Phone Number *</label>
-                    <input
-                      required
-                      type="text"
-                      value={editingGuest.phone}
-                      onChange={e => setEditingGuest({...editingGuest, phone: e.target.value})}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500 font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Room Number *</label>
-                    <input
-                      required
-                      type="text"
-                      value={editingGuest.room_number}
-                      onChange={e => setEditingGuest({...editingGuest, room_number: e.target.value})}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-700 space-y-2.5">
-                  <label className="block text-xs font-bold text-slate-300 uppercase">ID Verification Details</label>
-                  <div className="grid grid-cols-2 gap-2">
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Booking Source</label>
                     <select
-                      value={editingGuest.id_proof_type || 'Aadhaar Card'}
-                      onChange={e => setEditingGuest({...editingGuest, id_proof_type: e.target.value})}
-                      className="bg-slate-800 border border-slate-600 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none"
+                      value={form.booking_source} onChange={e => setForm({...form, booking_source: e.target.value})}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none"
                     >
-                      <option value="Aadhaar Card">Aadhaar Card</option>
-                      <option value="PAN Card">PAN Card</option>
-                      <option value="Driving License">Driving License</option>
-                      <option value="Passport">Passport</option>
-                      <option value="Voter ID">Voter ID</option>
-                      <option value="Other ID">Other ID Proof</option>
+                      <option value="offline">Walk-in</option>
+                      <option value="website">Website</option>
                     </select>
-
-                    <input
-                      type="text"
-                      placeholder="ID Number"
-                      value={editingGuest.id_proof_number || ''}
-                      onChange={e => setEditingGuest({...editingGuest, id_proof_number: e.target.value})}
-                      className="bg-slate-800 border border-slate-600 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none font-mono"
-                    />
                   </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Check-In Time</label>
-                    <input
-                      type="datetime-local"
-                      value={editingGuest.check_in}
-                      onChange={e => setEditingGuest({...editingGuest, check_in: e.target.value})}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Check-Out Time</label>
-                    <input
-                      type="datetime-local"
-                      value={editingGuest.check_out || ''}
-                      onChange={e => setEditingGuest({...editingGuest, check_out: e.target.value})}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 bg-slate-900/60 p-3 rounded-xl border border-slate-700">
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Status</label>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Payment Mode</label>
                     <select
-                      value={editingGuest.status || 'checked_in'}
-                      onChange={e => setEditingGuest({...editingGuest, status: e.target.value})}
-                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
+                      value={form.payment_mode} onChange={e => setForm({...form, payment_mode: e.target.value})}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none"
+                    >
+                      <option value="cash">Cash</option>
+                      <option value="upi">UPI</option>
+                      <option value="card">Card</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Amount Paid (₹)</label>
+                    <input 
+                      type="number" step="0.01" value={form.amount_paid} onChange={e => setForm({...form, amount_paid: e.target.value})} 
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 font-bold" 
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-6 border-t border-slate-700/60">
+                  <button type="button" onClick={() => setShowCheckInModal(false)} className="px-5 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:bg-slate-800 transition-colors">
+                    Cancel
+                  </button>
+                  <button type="submit" className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-xl text-sm font-bold text-white shadow-md transition-colors flex items-center gap-2">
+                    <Check className="w-4 h-4" /> Check In Guest
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Modal (Simulated identical styled for consistency) */}
+        {editingGuest && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-[#151923] border border-slate-700/60 rounded-2xl w-full max-w-2xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-5 border-b border-slate-700/60 pb-4">
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Edit3 className="w-5 h-5 text-blue-400" /> Edit Guest Record
+                </h3>
+                <button 
+                  onClick={() => setEditingGuest(null)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEdit} className="space-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Guest Full Name *</label>
+                      <input 
+                        required type="text"
+                        value={editingGuest.name} onChange={e => setEditingGuest({...editingGuest, name: e.target.value})} 
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Phone Number *</label>
+                      <input 
+                        required type="text"
+                        value={editingGuest.phone} onChange={e => setEditingGuest({...editingGuest, phone: e.target.value})} 
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 font-mono" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Room Number *</label>
+                      <input 
+                        required type="text"
+                        value={editingGuest.room_number} onChange={e => setEditingGuest({...editingGuest, room_number: e.target.value})} 
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 font-medium" 
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/60">
+                      <label className="block text-[11px] font-bold text-slate-400 uppercase mb-3">ID Verification</label>
+                      <div className="space-y-3">
+                        <select
+                          value={editingGuest.id_proof_type || ''} onChange={e => setEditingGuest({...editingGuest, id_proof_type: e.target.value})}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none"
+                        >
+                          <option value="Aadhaar Card">Aadhaar Card</option>
+                          <option value="PAN Card">PAN Card</option>
+                          <option value="Passport">Passport</option>
+                          <option value="Driving License">Driving License</option>
+                        </select>
+                        <input 
+                          type="text" placeholder="ID Number" 
+                          value={editingGuest.id_proof_number || ''} onChange={e => setEditingGuest({...editingGuest, id_proof_number: e.target.value})} 
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none font-mono" 
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Check-In</label>
+                        <input 
+                          required type="datetime-local" value={editingGuest.check_in} onChange={e => setEditingGuest({...editingGuest, check_in: e.target.value})} 
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Check-Out</label>
+                        <input 
+                          type="datetime-local" value={editingGuest.check_out || ''} onChange={e => setEditingGuest({...editingGuest, check_out: e.target.value})} 
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500" 
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-4 gap-4 pt-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Status</label>
+                    <select
+                      value={editingGuest.status} onChange={e => setEditingGuest({...editingGuest, status: e.target.value})}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
                     >
                       <option value="checked_in">Checked In</option>
                       <option value="checked_out">Checked Out</option>
                     </select>
                   </div>
-
                   <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Source</label>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Source</label>
                     <select
-                      value={editingGuest.booking_source || 'offline'}
-                      onChange={e => setEditingGuest({...editingGuest, booking_source: e.target.value})}
-                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
+                      value={editingGuest.booking_source} onChange={e => setEditingGuest({...editingGuest, booking_source: e.target.value})}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
                     >
-                      <option value="offline">Offline / Walk-in</option>
-                      <option value="website">Website Booking</option>
+                      <option value="offline">Walk-in</option>
+                      <option value="website">Website</option>
                     </select>
                   </div>
-
                   <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Payment Mode</label>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Payment Mode</label>
                     <select
-                      value={editingGuest.payment_mode || 'cash'}
-                      onChange={e => setEditingGuest({...editingGuest, payment_mode: e.target.value})}
-                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
+                      value={editingGuest.payment_mode} onChange={e => setEditingGuest({...editingGuest, payment_mode: e.target.value})}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
                     >
                       <option value="cash">Cash</option>
                       <option value="upi">UPI</option>
-                      <option value="website">Website</option>
                       <option value="card">Card</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Amount (₹)</label>
+                    <input 
+                      type="number" step="0.01" value={editingGuest.amount_paid} onChange={e => setEditingGuest({...editingGuest, amount_paid: e.target.value})} 
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 font-bold" 
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Amount Paid (₹)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={editingGuest.amount_paid}
-                    onChange={e => setEditingGuest({...editingGuest, amount_paid: e.target.value})}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500 font-semibold"
-                  />
-                </div>
-
-                <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-700/60 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setEditingGuest(null)}
-                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-sm font-medium text-slate-300 transition-colors"
-                  >
+                <div className="flex justify-end gap-3 pt-6 border-t border-slate-700/60">
+                  <button type="button" onClick={() => setEditingGuest(null)} className="px-5 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:bg-slate-800 transition-colors">
                     Cancel
                   </button>
-                  <button
-                    type="submit"
-                    disabled={savingEdit}
-                    className="px-5 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-50 shadow-md shadow-blue-900/30 flex items-center gap-1.5"
-                  >
+                  <button type="submit" disabled={savingEdit} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-xl text-sm font-bold text-white shadow-md transition-colors flex items-center gap-2">
                     <Check className="w-4 h-4" /> {savingEdit ? 'Saving...' : 'Save Changes'}
                   </button>
                 </div>
