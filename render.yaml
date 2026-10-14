@@ -22,6 +22,8 @@ services:
         value: personal_crm_persistent_jwt_secret_key_2026
       - key: DATABASE_URL
         value: postgresql://neondb_owner:npg_PkFGM5QZmv7d@ep-bold-violet-axz2ucrt.c-4.us-east-2.aws.neon.tech/neondb?sslmode=require&connect_timeout=15
+      - key: PUPPETEER_CACHE_DIR
+        value: /opt/render/project/src/backend/.cache/puppeteer
 
   # ----------------------------------------------------
   # 2. Frontend Static Site (React + Vite)

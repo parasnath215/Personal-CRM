@@ -18,6 +18,8 @@ dist/
 .wwebjs_cache/
 backend/.wwebjs_auth/
 backend/.wwebjs_cache/
+.cache/
+backend/.cache/
 
 # Databases
 backend/dev.db

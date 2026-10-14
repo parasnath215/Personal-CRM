@@ -46,16 +46,14 @@ export default function Settings() {
 
   const handleConnectWhatsApp = async () => {
     setWaLoading(true);
+    setWaStatus(prev => ({ ...prev, status: 'CONNECTING', error: null }));
     try {
       await api.post('/api/whatsapp/connect');
-      // Wait a moment and fetch status to trigger polling fast
-      setTimeout(async () => {
-        const data = await fetchWhatsAppStatus();
-        setWaLoading(false);
-      }, 1000);
+      await fetchWhatsAppStatus();
     } catch (error) {
       console.error('Failed to connect WhatsApp', error);
-      alert('Failed to initialize WhatsApp connection');
+      alert(error.response?.data?.error || 'Failed to initialize WhatsApp connection');
+    } finally {
       setWaLoading(false);
     }
   };
@@ -95,19 +93,22 @@ export default function Settings() {
     if (currentUser?.role === 'admin') {
       fetchUsers();
       fetchWhatsAppStatus();
-      
-      // Setup polling every 5 seconds
-      pollingRef.current = setInterval(fetchWhatsAppStatus, 5000);
     } else {
       setUsersLoading(false);
     }
-
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-      }
-    };
   }, [currentUser]);
+
+  // Dynamic status polling (every 2s if connecting, 5s otherwise)
+  useEffect(() => {
+    if (currentUser?.role !== 'admin') return;
+
+    const intervalMs = waStatus.status === 'CONNECTING' ? 2000 : 5000;
+    const interval = setInterval(() => {
+      fetchWhatsAppStatus();
+    }, intervalMs);
+
+    return () => clearInterval(interval);
+  }, [currentUser, waStatus.status]);
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
@@ -230,16 +231,7 @@ export default function Settings() {
                   </div>
 
                   <div className="pt-2">
-                    {waStatus.status === 'DISCONNECTED' ? (
-                      <button 
-                        onClick={handleConnectWhatsApp}
-                        disabled={waLoading}
-                        className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:opacity-50 text-white font-medium py-2.5 px-4 rounded-lg transition-colors shadow-sm cursor-pointer"
-                      >
-                        <RefreshCw className={`w-4 h-4 ${waLoading ? 'animate-spin' : ''}`} />
-                        Connect WhatsApp
-                      </button>
-                    ) : (
+                    {waStatus.status === 'CONNECTED' ? (
                       <button 
                         onClick={handleDisconnectWhatsApp}
                         disabled={waLoading}
@@ -247,6 +239,23 @@ export default function Settings() {
                       >
                         <LogOut className="w-4 h-4" />
                         Disconnect Session
+                      </button>
+                    ) : waStatus.status === 'CONNECTING' ? (
+                      <button 
+                        disabled
+                        className="w-full flex items-center justify-center gap-2 bg-blue-600/50 border border-blue-500/40 text-blue-200 font-medium py-2.5 px-4 rounded-lg transition-colors shadow-sm cursor-not-allowed"
+                      >
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Generating QR Code...
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={handleConnectWhatsApp}
+                        disabled={waLoading}
+                        className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:opacity-50 text-white font-medium py-2.5 px-4 rounded-lg transition-colors shadow-sm cursor-pointer"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${waLoading ? 'animate-spin' : ''}`} />
+                        Connect WhatsApp
                       </button>
                     )}
                   </div>
@@ -276,7 +285,24 @@ export default function Settings() {
                   ) : waStatus.status === 'CONNECTING' || waLoading ? (
                     <div className="text-center py-8 space-y-4">
                       <RefreshCw className="w-10 h-10 text-blue-400 animate-spin mx-auto" />
-                      <p className="text-xs text-slate-400">Initializing chromium environment and establishing socket tunnels...</p>
+                      <p className="text-sm font-medium text-slate-200">Starting WhatsApp Client...</p>
+                      <p className="text-xs text-slate-400 max-w-[240px]">
+                        Initializing headless browser & generating scan code. This usually takes 10-25 seconds...
+                      </p>
+                    </div>
+                  ) : waStatus.error ? (
+                    <div className="text-center py-6 text-rose-400 space-y-2">
+                      <div className="w-12 h-12 bg-rose-500/10 border border-rose-500/20 rounded-full flex items-center justify-center mx-auto text-rose-400">
+                        <AlertCircle className="w-6 h-6" />
+                      </div>
+                      <p className="text-sm font-semibold text-rose-300">Connection Failed</p>
+                      <p className="text-xs text-slate-400 max-w-[240px] break-words">{waStatus.error}</p>
+                      <button
+                        onClick={handleConnectWhatsApp}
+                        className="mt-2 text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-1.5 px-3 rounded-lg transition shadow cursor-pointer"
+                      >
+                        Try Again
+                      </button>
                     </div>
                   ) : (
                     <div className="text-center py-6 text-slate-500 space-y-2">

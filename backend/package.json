@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "seed": "tsx src/seed_dummy.ts",
-    "build": "npx prisma generate && npx prisma db push",
+    "build": "npx prisma generate && npx prisma db push && npx puppeteer browsers install chrome",
     "start": "tsx src/index.ts"
   },
   "keywords": [],

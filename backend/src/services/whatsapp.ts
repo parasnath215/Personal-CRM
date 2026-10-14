@@ -11,94 +11,158 @@ class WhatsAppService {
   private qrCodeDataUrl: string | null = null;
   private connectedUser: { name: string; number: string } | null = null;
   private authDir = path.join(__dirname, '../../.wwebjs_auth');
+  private lastError: string | null = null;
 
   constructor() {}
 
-  public initialize() {
-    if (this.client) {
-      return;
+  public async initialize(force: boolean = false) {
+    if (this.client && !force) {
+      if (this.status === 'CONNECTING' || this.status === 'QR_RECEIVED' || this.status === 'CONNECTED') {
+        return;
+      }
     }
 
-    console.log('Initializing WhatsApp client...');
-    this.status = 'CONNECTING';
-
-    this.client = new Client({
-      authStrategy: new LocalAuth({
-        clientId: 'crm-session',
-        dataPath: this.authDir
-      }),
-      puppeteer: {
-        headless: true,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu',
-          '--disable-extensions'
-        ]
-      }
-    });
-
-    this.client.on('qr', async (qr) => {
-      console.log('WhatsApp QR code received.');
+    if (this.client) {
       try {
-        this.qrCodeDataUrl = await qrcode.toDataURL(qr);
-        this.status = 'QR_RECEIVED';
-      } catch (err) {
-        console.error('Error generating QR code data URL:', err);
+        await this.client.destroy().catch(() => {});
+      } catch (e) {
+        // ignore destroy error
       }
-    });
-
-    this.client.on('authenticated', () => {
-      console.log('WhatsApp client authenticated.');
-      this.status = 'CONNECTING';
-    });
-
-    this.client.on('auth_failure', (msg) => {
-      console.error('WhatsApp authentication failure:', msg);
-      this.status = 'DISCONNECTED';
-      this.qrCodeDataUrl = null;
       this.client = null;
-    });
+    }
 
-    this.client.on('ready', () => {
-      console.log('WhatsApp client is ready.');
-      this.status = 'CONNECTED';
-      this.qrCodeDataUrl = null;
-      if (this.client) {
-        const info = this.client.info;
-        this.connectedUser = {
-          name: info.pushname || 'CRM WhatsApp User',
-          number: info.wid.user
-        };
+    this.lastError = null;
+    this.status = 'CONNECTING';
+    console.log('Initializing WhatsApp client...');
+
+    // Locate Chrome executable if installed via puppeteer browsers install
+    let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    if (!executablePath) {
+      const cacheDir = path.join(__dirname, '../../.cache/puppeteer/chrome');
+      if (fs.existsSync(cacheDir)) {
+        try {
+          const findChrome = (dir: string): string | null => {
+            const files = fs.readdirSync(dir);
+            for (const file of files) {
+              const fullPath = path.join(dir, file);
+              const stat = fs.statSync(fullPath);
+              if (stat.isDirectory()) {
+                const found = findChrome(fullPath);
+                if (found) return found;
+              } else if (file === 'chrome' || file === 'chrome.exe') {
+                return fullPath;
+              }
+            }
+            return null;
+          };
+          const found = findChrome(cacheDir);
+          if (found) {
+            executablePath = found;
+            console.log('Using cached Chrome binary:', executablePath);
+          }
+        } catch (e) {
+          console.warn('Could not traverse cache directory:', e);
+        }
       }
-    });
+    }
 
-    this.client.on('disconnected', (reason) => {
-      console.log('WhatsApp client disconnected:', reason);
-      this.status = 'DISCONNECTED';
-      this.connectedUser = null;
-      this.qrCodeDataUrl = null;
-      this.client = null;
-      this.cleanupAuthDir();
-    });
+    const puppeteerArgs = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--disable-gpu',
+      '--disable-extensions'
+    ];
 
-    this.client.initialize().catch((err) => {
-      console.error('Error during WhatsApp initialization:', err);
+    try {
+      this.client = new Client({
+        authStrategy: new LocalAuth({
+          clientId: 'crm-session',
+          dataPath: this.authDir
+        }),
+        puppeteer: {
+          headless: true,
+          executablePath: executablePath || undefined,
+          args: puppeteerArgs
+        },
+        webVersionCache: {
+          type: 'remote',
+          remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-js/main/dist/wppconnect-wa.js'
+        }
+      });
+
+      this.client.on('qr', async (qr) => {
+        console.log('WhatsApp QR code received.');
+        try {
+          this.qrCodeDataUrl = await qrcode.toDataURL(qr);
+          this.status = 'QR_RECEIVED';
+          this.lastError = null;
+        } catch (err: any) {
+          console.error('Error generating QR code data URL:', err);
+          this.lastError = 'Failed to generate QR image';
+        }
+      });
+
+      this.client.on('authenticated', () => {
+        console.log('WhatsApp client authenticated.');
+        this.status = 'CONNECTING';
+        this.lastError = null;
+      });
+
+      this.client.on('auth_failure', (msg) => {
+        console.error('WhatsApp authentication failure:', msg);
+        this.status = 'DISCONNECTED';
+        this.lastError = typeof msg === 'string' ? msg : 'Authentication failed';
+        this.qrCodeDataUrl = null;
+        this.client = null;
+      });
+
+      this.client.on('ready', () => {
+        console.log('WhatsApp client is ready.');
+        this.status = 'CONNECTED';
+        this.qrCodeDataUrl = null;
+        this.lastError = null;
+        if (this.client) {
+          const info = this.client.info;
+          this.connectedUser = {
+            name: info.pushname || 'CRM WhatsApp User',
+            number: info.wid.user
+          };
+        }
+      });
+
+      this.client.on('disconnected', (reason) => {
+        console.log('WhatsApp client disconnected:', reason);
+        this.status = 'DISCONNECTED';
+        this.connectedUser = null;
+        this.qrCodeDataUrl = null;
+        this.client = null;
+        this.cleanupAuthDir();
+      });
+
+      this.client.initialize().catch((err: any) => {
+        console.error('Error during WhatsApp initialization:', err);
+        this.status = 'DISCONNECTED';
+        this.lastError = err?.message || 'Failed to launch WhatsApp browser environment';
+        this.client = null;
+      });
+    } catch (err: any) {
+      console.error('Failed to construct WhatsApp client:', err);
       this.status = 'DISCONNECTED';
+      this.lastError = err?.message || 'Failed to instantiate WhatsApp client';
       this.client = null;
-    });
+    }
   }
 
   public getStatus() {
     return {
       status: this.status,
       qrCode: this.qrCodeDataUrl,
-      user: this.connectedUser
+      user: this.connectedUser,
+      error: this.lastError
     };
   }
 
@@ -125,7 +189,14 @@ class WhatsAppService {
   }
 
   public async disconnect(): Promise<void> {
-    if (!this.client) return;
+    if (!this.client) {
+      this.status = 'DISCONNECTED';
+      this.connectedUser = null;
+      this.qrCodeDataUrl = null;
+      this.lastError = null;
+      this.cleanupAuthDir();
+      return;
+    }
 
     try {
       console.log('Logging out/destroying WhatsApp client...');
@@ -138,6 +209,7 @@ class WhatsAppService {
       this.status = 'DISCONNECTED';
       this.connectedUser = null;
       this.qrCodeDataUrl = null;
+      this.lastError = null;
       this.cleanupAuthDir();
     }
   }
