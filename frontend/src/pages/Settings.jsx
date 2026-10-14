@@ -241,13 +241,21 @@ export default function Settings() {
                         Disconnect Session
                       </button>
                     ) : waStatus.status === 'CONNECTING' ? (
-                      <button 
-                        disabled
-                        className="w-full flex items-center justify-center gap-2 bg-blue-600/50 border border-blue-500/40 text-blue-200 font-medium py-2.5 px-4 rounded-lg transition-colors shadow-sm cursor-not-allowed"
-                      >
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        Generating QR Code...
-                      </button>
+                      <div className="space-y-1.5">
+                        <button 
+                          disabled
+                          className="w-full flex items-center justify-center gap-2 bg-blue-600/50 border border-blue-500/40 text-blue-200 font-medium py-2.5 px-4 rounded-lg transition-colors shadow-sm cursor-not-allowed"
+                        >
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Generating QR Code...
+                        </button>
+                        <button 
+                          onClick={handleDisconnectWhatsApp}
+                          className="w-full text-center text-xs text-slate-400 hover:text-rose-400 py-1 transition cursor-pointer"
+                        >
+                          Cancel / Reset
+                        </button>
+                      </div>
                     ) : (
                       <button 
                         onClick={handleConnectWhatsApp}
@@ -286,8 +294,8 @@ export default function Settings() {
                     <div className="text-center py-8 space-y-4">
                       <RefreshCw className="w-10 h-10 text-blue-400 animate-spin mx-auto" />
                       <p className="text-sm font-medium text-slate-200">Starting WhatsApp Client...</p>
-                      <p className="text-xs text-slate-400 max-w-[240px]">
-                        Initializing headless browser & generating scan code. This usually takes 10-25 seconds...
+                      <p className="text-xs text-slate-400 max-w-[250px]">
+                        Initializing headless browser & rendering scan code. This usually takes 20-35 seconds...
                       </p>
                     </div>
                   ) : waStatus.error ? (

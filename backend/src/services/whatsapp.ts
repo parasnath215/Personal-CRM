@@ -13,8 +13,28 @@ class WhatsAppService {
   private connectedUser: { name: string; number: string } | null = null;
   private authDir = path.join(__dirname, '../../.wwebjs_auth');
   private lastError: string | null = null;
+  private qrTimeoutTimer: NodeJS.Timeout | null = null;
 
   constructor() {}
+
+  private findBinary(dir: string): string | null {
+    try {
+      const files = fs.readdirSync(dir);
+      for (const file of files) {
+        const fullPath = path.join(dir, file);
+        const stat = fs.statSync(fullPath);
+        if (stat.isDirectory()) {
+          const found = this.findBinary(fullPath);
+          if (found) return found;
+        } else if (file === 'chrome' || file === 'chrome.exe') {
+          return fullPath;
+        }
+      }
+    } catch {
+      // ignore read error
+    }
+    return null;
+  }
 
   private resolveChromePath(): string | undefined {
     // 1. Explicit env var override
@@ -23,9 +43,28 @@ class WhatsAppService {
       return process.env.PUPPETEER_EXECUTABLE_PATH;
     }
 
-    // 2. Run puppeteer browsers install to verify or download Chrome and capture its exact path
+    // 2. Fast filesystem check across standard Puppeteer cache paths (0ms, non-blocking)
+    const searchDirs = [
+      '/opt/render/.cache/puppeteer/chrome',
+      path.join(process.env.HOME || '', '.cache/puppeteer/chrome'),
+      path.join(process.env.USERPROFILE || '', '.cache/puppeteer/chrome'),
+      path.join(__dirname, '../../.cache/puppeteer/chrome'),
+      path.join(process.cwd(), '.cache/puppeteer/chrome')
+    ];
+
+    for (const dir of searchDirs) {
+      if (fs.existsSync(dir)) {
+        const found = this.findBinary(dir);
+        if (found) {
+          console.log('Instantaneous Chrome binary found at:', found);
+          return found;
+        }
+      }
+    }
+
+    // 3. Fallback: only install if completely absent from disk
     try {
-      console.log('Resolving Chrome binary path via puppeteer CLI...');
+      console.log('Chrome not found on disk, running puppeteer browsers install...');
       const output = execSync('npx puppeteer browsers install chrome', {
         encoding: 'utf8',
         timeout: 90000
@@ -34,53 +73,22 @@ class WhatsAppService {
       if (match && match[1]) {
         const detectedPath = match[1].trim();
         if (fs.existsSync(detectedPath)) {
-          console.log('Verified Chrome binary at:', detectedPath);
+          console.log('Verified Chrome binary installed at:', detectedPath);
           return detectedPath;
         }
       }
     } catch (e: any) {
-      console.warn('Warning during puppeteer install check:', e?.message);
+      console.warn('Puppeteer browser install warning:', e?.message);
     }
 
-    // 3. Fallback: recursively search common cache folders
-    const searchDirs = [
-      '/opt/render/.cache/puppeteer/chrome',
-      path.join(process.env.HOME || '', '.cache/puppeteer/chrome'),
-      path.join(process.env.USERPROFILE || '', '.cache/puppeteer/chrome'),
-      path.join(__dirname, '../../.cache/puppeteer/chrome')
-    ];
-
-    const findBinary = (dir: string): string | null => {
-      try {
-        const files = fs.readdirSync(dir);
-        for (const file of files) {
-          const fullPath = path.join(dir, file);
-          const stat = fs.statSync(fullPath);
-          if (stat.isDirectory()) {
-            const found = findBinary(fullPath);
-            if (found) return found;
-          } else if (file === 'chrome' || file === 'chrome.exe') {
-            return fullPath;
-          }
-        }
-      } catch {
-        // ignore read error
-      }
-      return null;
-    };
-
-    for (const dir of searchDirs) {
-      if (fs.existsSync(dir)) {
-        const found = findBinary(dir);
-        if (found) {
-          console.log('Discovered Chrome binary at:', found);
-          return found;
-        }
-      }
-    }
-
-    console.warn('Could not detect custom Chrome path; falling back to Puppeteer defaults.');
     return undefined;
+  }
+
+  private clearQrTimeout() {
+    if (this.qrTimeoutTimer) {
+      clearTimeout(this.qrTimeoutTimer);
+      this.qrTimeoutTimer = null;
+    }
   }
 
   public async initialize(force: boolean = false) {
@@ -89,6 +97,8 @@ class WhatsAppService {
         return;
       }
     }
+
+    this.clearQrTimeout();
 
     if (this.client) {
       try {
@@ -103,7 +113,7 @@ class WhatsAppService {
     this.status = 'CONNECTING';
     console.log('Initializing WhatsApp client...');
 
-    // Resolve verified Chrome binary executable
+    // Resolve verified Chrome binary executable fast
     const executablePath = this.resolveChromePath();
 
     const puppeteerArgs = [
@@ -127,15 +137,25 @@ class WhatsAppService {
           headless: true,
           executablePath: executablePath || undefined,
           args: puppeteerArgs
-        },
-        webVersionCache: {
-          type: 'remote',
-          remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-js/main/dist/wppconnect-wa.js'
         }
       });
 
+      // 55-second safeguard timeout to prevent hanging UI
+      this.qrTimeoutTimer = setTimeout(() => {
+        if (this.status === 'CONNECTING') {
+          console.warn('WhatsApp initialization timed out waiting for QR code');
+          this.status = 'DISCONNECTED';
+          this.lastError = 'Browser initialization timed out (took > 55s). Please click Try Again.';
+          if (this.client) {
+            this.client.destroy().catch(() => {});
+            this.client = null;
+          }
+        }
+      }, 55000);
+
       this.client.on('qr', async (qr) => {
         console.log('WhatsApp QR code received.');
+        this.clearQrTimeout();
         try {
           this.qrCodeDataUrl = await qrcode.toDataURL(qr);
           this.status = 'QR_RECEIVED';
@@ -148,12 +168,14 @@ class WhatsAppService {
 
       this.client.on('authenticated', () => {
         console.log('WhatsApp client authenticated.');
+        this.clearQrTimeout();
         this.status = 'CONNECTING';
         this.lastError = null;
       });
 
       this.client.on('auth_failure', (msg) => {
         console.error('WhatsApp authentication failure:', msg);
+        this.clearQrTimeout();
         this.status = 'DISCONNECTED';
         this.lastError = typeof msg === 'string' ? msg : 'Authentication failed';
         this.qrCodeDataUrl = null;
@@ -162,20 +184,22 @@ class WhatsAppService {
 
       this.client.on('ready', () => {
         console.log('WhatsApp client is ready.');
+        this.clearQrTimeout();
         this.status = 'CONNECTED';
         this.qrCodeDataUrl = null;
         this.lastError = null;
         if (this.client) {
           const info = this.client.info;
           this.connectedUser = {
-            name: info.pushname || 'CRM WhatsApp User',
-            number: info.wid.user
+            name: info?.pushname || 'CRM WhatsApp User',
+            number: info?.wid?.user || ''
           };
         }
       });
 
       this.client.on('disconnected', (reason) => {
         console.log('WhatsApp client disconnected:', reason);
+        this.clearQrTimeout();
         this.status = 'DISCONNECTED';
         this.connectedUser = null;
         this.qrCodeDataUrl = null;
@@ -185,12 +209,14 @@ class WhatsAppService {
 
       this.client.initialize().catch((err: any) => {
         console.error('Error during WhatsApp initialization:', err);
+        this.clearQrTimeout();
         this.status = 'DISCONNECTED';
         this.lastError = err?.message || 'Failed to launch WhatsApp browser environment';
         this.client = null;
       });
     } catch (err: any) {
       console.error('Failed to construct WhatsApp client:', err);
+      this.clearQrTimeout();
       this.status = 'DISCONNECTED';
       this.lastError = err?.message || 'Failed to instantiate WhatsApp client';
       this.client = null;
@@ -229,6 +255,7 @@ class WhatsAppService {
   }
 
   public async disconnect(): Promise<void> {
+    this.clearQrTimeout();
     if (!this.client) {
       this.status = 'DISCONNECTED';
       this.connectedUser = null;
