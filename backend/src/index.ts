@@ -8,7 +8,7 @@ import expensesRoutes from './routes/expenses';
 import reportsRoutes from './routes/reports';
 import settingsRoutes from './routes/settings';
 import goalsRoutes from './routes/goals';
-import hotelRoutes from './routes/hotel';
+import hotelRoutes, { syncAllHotelIncome } from './routes/hotel';
 import whatsappRoutes from './routes/whatsapp';
 import whatsappService from './services/whatsapp';
 import { ensureAdminUserExists } from './seed';
@@ -49,6 +49,9 @@ app.listen(PORT, async () => {
 
   // Automatically ensure admin user exists on server start
   await ensureAdminUserExists();
+
+  // Auto-sync all existing hotel incomes to transactions
+  await syncAllHotelIncome();
 
   // Auto-initialize WhatsApp if a saved session is found
   const sessionPath = path.join(__dirname, '../.wwebjs_auth/session-crm-session');

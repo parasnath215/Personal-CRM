@@ -4,7 +4,8 @@ import Sidebar from '../components/Sidebar';
 import { useAuth } from '../context/AuthContext';
 import { 
   Shield, UserPlus, Users, MessageSquare, QrCode, 
-  RefreshCw, CheckCircle2, AlertCircle, LogOut, Send 
+  RefreshCw, CheckCircle2, AlertCircle, LogOut, Send,
+  Edit3, Trash2, X
 } from 'lucide-react';
 
 export default function Settings() {
@@ -12,6 +13,8 @@ export default function Settings() {
   const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(true);
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'hotel_staff' });
+  const [editingUser, setEditingUser] = useState(null);
+  const [savingUser, setSavingUser] = useState(false);
 
   // WhatsApp state
   const [waStatus, setWaStatus] = useState({ status: 'DISCONNECTED', qrCode: null, user: null });
@@ -88,6 +91,7 @@ export default function Settings() {
   };
 
   useEffect(() => {
+    document.title = 'Personal CRM - Settings';
     if (currentUser?.role === 'admin') {
       fetchUsers();
       fetchWhatsAppStatus();
@@ -114,7 +118,50 @@ export default function Settings() {
       alert('User created successfully');
     } catch (error) {
       console.error('Failed to create user', error);
-      alert('Failed to create user');
+      alert(error.response?.data?.error || 'Failed to create user');
+    }
+  };
+
+  const handleDeleteUser = async (id, name) => {
+    if (id === currentUser?.id) {
+      alert('You cannot delete your own account.');
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to permanently delete user "${name}" (ID #${id})?`)) {
+      return;
+    }
+    try {
+      await api.delete(`/api/settings/users/${id}`);
+      fetchUsers();
+      alert(`User "${name}" deleted successfully.`);
+    } catch (error) {
+      console.error('Failed to delete user:', error);
+      alert(error.response?.data?.error || 'Failed to delete user');
+    }
+  };
+
+  const handleSaveEditUser = async (e) => {
+    e.preventDefault();
+    if (!editingUser.name.trim() || !editingUser.email.trim()) {
+      alert('Full Name and Email are required.');
+      return;
+    }
+    setSavingUser(true);
+    try {
+      await api.put(`/api/settings/users/${editingUser.id}`, {
+        name: editingUser.name,
+        email: editingUser.email,
+        role: editingUser.role,
+        ...(editingUser.password && editingUser.password.trim() ? { password: editingUser.password.trim() } : {})
+      });
+      setEditingUser(null);
+      fetchUsers();
+      alert('User updated successfully.');
+    } catch (error) {
+      console.error('Failed to update user:', error);
+      alert(error.response?.data?.error || 'Failed to update user');
+    } finally {
+      setSavingUser(false);
     }
   };
 
@@ -329,24 +376,175 @@ export default function Settings() {
               <div className="bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-700">
                 <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
                   <Users className="w-5 h-5 text-blue-400" />
-                  System Users
+                  System Users ({users.length})
                 </h3>
-                {usersLoading ? <p className="text-slate-400">Loading...</p> : (
+                {usersLoading ? <p className="text-slate-400">Loading users...</p> : (
                   <ul className="divide-y divide-slate-700/50">
-                    {users.map(u => (
-                      <li key={u.id} className="py-3 flex justify-between items-center">
-                        <div>
-                          <p className="font-medium text-white">{u.name}</p>
-                          <p className="text-xs text-slate-400">{u.email}</p>
-                        </div>
-                        <span className={`text-xs px-2 py-1 rounded font-medium capitalize ${u.role === 'admin' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                          {u.role.replace('_', ' ')}
-                        </span>
-                      </li>
-                    ))}
+                    {users.map(u => {
+                      const isSelf = u.id === currentUser?.id;
+                      return (
+                        <li key={u.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-white">{u.name}</p>
+                              <span className="text-[10px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-mono">
+                                ID: #{u.id}
+                              </span>
+                              {isSelf && (
+                                <span className="text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30 px-1.5 py-0.5 rounded font-bold">
+                                  You
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-400 mt-0.5">{u.email}</p>
+                          </div>
+
+                          <div className="flex items-center gap-2.5">
+                            <span className={`text-xs px-2.5 py-1 rounded-full font-semibold capitalize border ${
+                              u.role === 'admin' 
+                                ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' 
+                                : u.role === 'accountant'
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                            }`}>
+                              {u.role.replace('_', ' ')}
+                            </span>
+
+                            {/* Action Buttons: Edit & Delete */}
+                            <div className="flex items-center gap-1 border-l border-slate-700 pl-2">
+                              <button
+                                type="button"
+                                onClick={() => setEditingUser({
+                                  id: u.id,
+                                  name: u.name,
+                                  email: u.email,
+                                  role: u.role,
+                                  password: ''
+                                })}
+                                className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors cursor-pointer"
+                                title={`Edit user "${u.name}"`}
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={isSelf}
+                                onClick={() => handleDeleteUser(u.id, u.name)}
+                                className={`p-1.5 rounded-lg transition-colors ${
+                                  isSelf 
+                                    ? 'text-slate-600 cursor-not-allowed' 
+                                    : 'text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 cursor-pointer'
+                                }`}
+                                title={isSelf ? 'Cannot delete your own account' : `Delete user "${u.name}"`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit User Modal */}
+        {editingUser && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-slate-800 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl relative animate-fade-in">
+              <div className="flex items-center justify-between pb-4 border-b border-slate-700 mb-4">
+                <h4 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Edit3 className="w-5 h-5 text-blue-400" /> Edit User Account
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-700 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEditUser} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">User ID</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={`#${editingUser.id}`}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-500 cursor-not-allowed"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Full Name</label>
+                  <input
+                    required
+                    type="text"
+                    value={editingUser.name}
+                    onChange={e => setEditingUser({ ...editingUser, name: e.target.value })}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Email</label>
+                  <input
+                    required
+                    type="email"
+                    value={editingUser.email}
+                    onChange={e => setEditingUser({ ...editingUser, email: e.target.value })}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Role</label>
+                  <select
+                    value={editingUser.role}
+                    onChange={e => setEditingUser({ ...editingUser, role: e.target.value })}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="hotel_staff">Hotel Staff</option>
+                    <option value="accountant">Accountant</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">
+                    New Password <span className="text-slate-500 font-normal normal-case">(leave blank to keep current)</span>
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Enter new password to change..."
+                    value={editingUser.password || ''}
+                    onChange={e => setEditingUser({ ...editingUser, password: e.target.value })}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setEditingUser(null)}
+                    className="px-4 py-2 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-700 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingUser}
+                    className="px-5 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 transition-colors shadow-md cursor-pointer"
+                  >
+                    {savingUser ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

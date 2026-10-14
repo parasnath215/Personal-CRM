@@ -67,6 +67,7 @@ export default function Hotel() {
   };
 
   useEffect(() => {
+    document.title = 'Personal CRM - Hotel Management';
     fetchGuests();
   }, []);
 

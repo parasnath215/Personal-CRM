@@ -1,10 +1,9 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../prisma';
 import { authenticate } from '../middleware/auth';
 import { DEFAULT_INCOME_CATEGORIES, DEFAULT_EXPENDITURE_CATEGORIES } from '../seed';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Get categories (system default + custom user categories)
 router.get('/categories', authenticate, async (req, res) => {
@@ -132,7 +131,10 @@ router.get('/', authenticate, async (req, res) => {
 
     const expenses = await prisma.expense.findMany({
       where: whereClause,
-      orderBy: { spent_on: 'desc' }
+      orderBy: [
+        { spent_on: 'desc' },
+        { id: 'desc' }
+      ]
     });
     res.json(expenses);
   } catch (error) {

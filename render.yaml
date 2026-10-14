@@ -19,9 +19,9 @@ services:
       - key: NODE_ENV
         value: production
       - key: JWT_SECRET
-        generateValue: true
+        value: personal_crm_persistent_jwt_secret_key_2026
       - key: DATABASE_URL
-        value: postgresql://neondb_owner:npg_PkFGM5QZmv7d@ep-bold-violet-axz2ucrt.c-4.us-east-2.aws.neon.tech/neondb?sslmode=require
+        value: postgresql://neondb_owner:npg_PkFGM5QZmv7d@ep-bold-violet-axz2ucrt.c-4.us-east-2.aws.neon.tech/neondb?sslmode=require&connect_timeout=15
 
   # ----------------------------------------------------
   # 2. Frontend Static Site (React + Vite)

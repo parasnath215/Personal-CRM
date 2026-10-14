@@ -1,14 +1,14 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../prisma';
 import { authenticate } from '../middleware/auth';
 import multer from 'multer';
 // @ts-ignore
 import vcard from 'vcard-parser';
 import fs from 'fs';
 import { executeDailyWishesAndReminders } from '../cron';
+import { autoGenerateBirthdayTasks } from './tasks';
 
 const router = Router();
-const prisma = new PrismaClient();
 const upload = multer({ dest: 'uploads/' });
 
 // Get all contacts
@@ -86,6 +86,7 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
 // Create a contact
 router.post('/', authenticate, async (req, res) => {
   try {
+    const userId = (req as any).user.userId;
     const { name, phone, email, tags, date_of_birth, marriage_anniversary } = req.body;
     
     const existing = await prisma.contact.findUnique({ where: { phone } });
@@ -103,6 +104,11 @@ router.post('/', authenticate, async (req, res) => {
         marriage_anniversary: marriage_anniversary ? new Date(marriage_anniversary) : null
       }
     });
+
+    if (date_of_birth) {
+      autoGenerateBirthdayTasks(new Date(), userId).catch(() => {});
+    }
+
     res.json(contact);
   } catch (error) {
     console.error('Error creating contact:', error);
@@ -113,6 +119,7 @@ router.post('/', authenticate, async (req, res) => {
 // Update a contact
 router.put('/:id', authenticate, async (req, res) => {
   try {
+    const userId = (req as any).user.userId;
     const id = parseInt(req.params.id as string);
     const { name, phone, email, tags, date_of_birth, marriage_anniversary } = req.body;
 
@@ -133,6 +140,10 @@ router.put('/:id', authenticate, async (req, res) => {
       }
     });
 
+    if (date_of_birth) {
+      autoGenerateBirthdayTasks(new Date(), userId).catch(() => {});
+    }
+
     res.json(updated);
   } catch (error) {
     console.error('Error updating contact:', error);
@@ -140,10 +151,34 @@ router.put('/:id', authenticate, async (req, res) => {
   }
 });
 
-// Delete a contact
+// Bulk delete contacts
+router.post('/bulk-delete', authenticate, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'Array of contact IDs is required' });
+    }
+    const numIds = ids.map(id => parseInt(id)).filter(id => !isNaN(id));
+
+    // Remove foreign-key linked notifications and family members
+    await prisma.dashboardNotification.deleteMany({ where: { contact_id: { in: numIds } } });
+    await prisma.familyMember.deleteMany({ where: { contact_id: { in: numIds } } });
+    const result = await prisma.contact.deleteMany({ where: { id: { in: numIds } } });
+
+    res.json({ success: true, count: result.count, message: `${result.count} contacts deleted` });
+  } catch (error) {
+    console.error('Error bulk deleting contacts:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete a single contact
 router.delete('/:id', authenticate, async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
+    // Remove foreign-key linked notifications first
+    await prisma.dashboardNotification.deleteMany({ where: { contact_id: id } });
+    await prisma.familyMember.deleteMany({ where: { contact_id: id } });
     await prisma.contact.delete({ where: { id } });
     res.json({ success: true, message: 'Contact deleted' });
   } catch (error) {
@@ -155,6 +190,7 @@ router.delete('/:id', authenticate, async (req, res) => {
 // Add Family Member
 router.post('/:id/family', authenticate, async (req, res) => {
   try {
+    const userId = (req as any).user.userId;
     const contactId = parseInt(req.params.id as string);
     const { relation, full_name, date_of_birth, marriage_anniversary, date_of_death } = req.body;
 
@@ -168,6 +204,11 @@ router.post('/:id/family', authenticate, async (req, res) => {
         date_of_death: date_of_death ? new Date(date_of_death) : null,
       }
     });
+
+    if (date_of_birth) {
+      autoGenerateBirthdayTasks(new Date(), userId).catch(() => {});
+    }
+
     res.json(familyMember);
   } catch (error) {
     console.error('Error adding family member:', error);

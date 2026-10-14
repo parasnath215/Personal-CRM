@@ -1,13 +1,91 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../prisma';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
-const prisma = new PrismaClient();
+
+function formatPaymentMode(mode?: string | null): string {
+  if (!mode) return 'Cash';
+  const lower = mode.toLowerCase();
+  if (lower === 'upi') return 'UPI';
+  if (lower === 'card') return 'Credit Card';
+  if (lower === 'website') return 'Website / Online';
+  return mode.charAt(0).toUpperCase() + mode.slice(1);
+}
+
+// Helper to synchronize hotel guest payment to Expense/Income transaction
+export async function syncGuestIncome(guestId: number, userId?: number) {
+  try {
+    const guest = await prisma.hotelGuest.findUnique({ where: { id: guestId } });
+    if (!guest) return;
+
+    const guestTag = `[Hotel Guest #${guest.id}]`;
+    const targetUserId = userId || guest.entered_by;
+
+    const existingExpense = await prisma.expense.findFirst({
+      where: {
+        category: 'Hotel income',
+        note: { contains: guestTag }
+      }
+    });
+
+    const amount = guest.amount_paid || 0;
+    const paymentMode = formatPaymentMode(guest.payment_mode);
+    const note = `Hotel Room ${guest.room_number} - ${guest.name} ${guestTag}`;
+
+    if (amount > 0) {
+      if (existingExpense) {
+        await prisma.expense.update({
+          where: { id: existingExpense.id },
+          data: {
+            amount,
+            spent_on: guest.check_in,
+            payment_mode: paymentMode,
+            note
+          }
+        });
+      } else {
+        await prisma.expense.create({
+          data: {
+            type: 'income',
+            category: 'Hotel income',
+            amount,
+            spent_on: guest.check_in,
+            payment_mode: paymentMode,
+            note,
+            created_by: targetUserId
+          }
+        });
+      }
+    } else if (existingExpense) {
+      await prisma.expense.delete({ where: { id: existingExpense.id } });
+    }
+  } catch (err) {
+    console.error(`Error syncing hotel income for guest #${guestId}:`, err);
+  }
+}
+
+// Backfill / sync all existing hotel guests that have amount_paid > 0
+export async function syncAllHotelIncome() {
+  try {
+    const guests = await prisma.hotelGuest.findMany({
+      where: { amount_paid: { gt: 0 } }
+    });
+
+    for (const guest of guests) {
+      await syncGuestIncome(guest.id, guest.entered_by);
+    }
+  } catch (err) {
+    console.error('Error during bulk hotel income sync:', err);
+  }
+}
 
 // Get hotel guests
 router.get('/guests', authenticate, async (req, res) => {
   try {
+    // Background sync to ensure all past hotel records have transactions
+    syncAllHotelIncome().catch(() => {});
+
     const guests = await prisma.hotelGuest.findMany({
       orderBy: { check_in: 'desc' }
     });
@@ -52,6 +130,10 @@ router.post('/guests', authenticate, async (req, res) => {
         entered_by: userId
       }
     });
+
+    // Auto-register hotel income in Transactions if amount_paid > 0
+    await syncGuestIncome(guest.id, userId);
+
     res.json(guest);
   } catch (error) {
     console.error('Error creating guest:', error);
@@ -63,6 +145,7 @@ router.post('/guests', authenticate, async (req, res) => {
 router.put('/guests/:id', authenticate, async (req, res) => {
   try {
     const guestId = parseInt(req.params.id as string);
+    const userId = (req as any).user.userId;
     const { 
       name, 
       phone, 
@@ -99,6 +182,9 @@ router.put('/guests/:id', authenticate, async (req, res) => {
       }
     });
 
+    // Auto-sync hotel income in Transactions
+    await syncGuestIncome(guestId, userId);
+
     res.json(updated);
   } catch (error) {
     console.error('Error updating guest:', error);
@@ -114,6 +200,15 @@ router.delete('/guests/:id', authenticate, async (req, res) => {
     if (!existing) {
       return res.status(404).json({ error: 'Guest record not found' });
     }
+
+    // Remove any registered hotel income transaction linked to this guest
+    const guestTag = `[Hotel Guest #${guestId}]`;
+    await prisma.expense.deleteMany({
+      where: {
+        category: 'Hotel income',
+        note: { contains: guestTag }
+      }
+    });
 
     await prisma.hotelGuest.delete({ where: { id: guestId } });
     res.json({ success: true, message: 'Guest record deleted' });

@@ -1,10 +1,9 @@
 import cron from 'node-cron';
-import { PrismaClient } from '@prisma/client';
+import prisma from './prisma';
 import whatsappService from './services/whatsapp';
+import { autoGenerateBirthdayTasks } from './routes/tasks';
 import https from 'https';
 import http from 'http';
-
-const prisma = new PrismaClient();
 
 // -------------------------------------------------------------
 // Keep-Awake Self Ping (Runs every 10 mins)
@@ -29,6 +28,8 @@ export async function executeDailyWishesAndReminders() {
   console.log('🔄 Executing WhatsApp CRM Birthday & Anniversary Automation Check...');
   
   const today = new Date();
+  // Automatically ensure today's birthday tasks exist
+  await autoGenerateBirthdayTasks(today);
   const todayMonth = today.getMonth() + 1; // 1-12
   const todayDate = today.getDate(); // 1-31
 

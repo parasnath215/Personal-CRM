@@ -37,8 +37,8 @@ class WhatsAppService {
           '--disable-accelerated-2d-canvas',
           '--no-first-run',
           '--no-zygote',
-          '--single-process',
-          '--disable-gpu'
+          '--disable-gpu',
+          '--disable-extensions'
         ]
       }
     });
@@ -62,6 +62,7 @@ class WhatsAppService {
       console.error('WhatsApp authentication failure:', msg);
       this.status = 'DISCONNECTED';
       this.qrCodeDataUrl = null;
+      this.client = null;
     });
 
     this.client.on('ready', () => {
@@ -82,12 +83,14 @@ class WhatsAppService {
       this.status = 'DISCONNECTED';
       this.connectedUser = null;
       this.qrCodeDataUrl = null;
+      this.client = null;
       this.cleanupAuthDir();
     });
 
     this.client.initialize().catch((err) => {
       console.error('Error during WhatsApp initialization:', err);
       this.status = 'DISCONNECTED';
+      this.client = null;
     });
   }
 

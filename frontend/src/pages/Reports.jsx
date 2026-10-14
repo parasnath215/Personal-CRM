@@ -45,15 +45,16 @@ export default function Reports() {
   
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportDateRange, setExportDateRange] = useState({ start: '', end: '' });
+  const [ledgerFilter, setLedgerFilter] = useState('all'); // 'all', 'income', 'expenditure'
 
-  // Form State for Adding Transaction
+  // Form State for Adding Transaction (UPI default first selected)
   const [form, setForm] = useState({
     type: 'expenditure',
     amount: '',
     category: 'Home grocery & Gifts',
     note: '',
     spent_on: getTodayStr(),
-    payment_mode: 'Cash'
+    payment_mode: 'UPI'
   });
 
   // Modal State for Adding Custom Category
@@ -102,6 +103,7 @@ export default function Reports() {
   };
 
   useEffect(() => {
+    document.title = 'Personal CRM - Financial Reports';
     fetchData();
   }, []);
 
@@ -115,12 +117,18 @@ export default function Reports() {
     const monthSummary = monthlyStatements.find(m => m.monthKey === selectedMonthKey);
     if (!monthSummary) return;
 
-    // Filter transactions for this month
-    const monthTxs = transactions.filter(t => {
-      const d = new Date(t.spent_on);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      return key === selectedMonthKey;
-    });
+    // Filter transactions for this month and sort newest first
+    const monthTxs = transactions
+      .filter(t => {
+        const d = new Date(t.spent_on);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        return key === selectedMonthKey;
+      })
+      .sort((a, b) => {
+        const diff = new Date(b.spent_on).getTime() - new Date(a.spent_on).getTime();
+        if (diff !== 0) return diff;
+        return (b.id || 0) - (a.id || 0);
+      });
 
     setSelectedMonthDetail({
       ...monthSummary,
@@ -622,75 +630,154 @@ export default function Reports() {
                 </div>
 
                 {/* Itemized Transactions for Selected Month */}
-                <div className="pt-2">
-                  <h4 className="text-sm font-bold text-white uppercase tracking-wider mb-3">
-                    Itemized Statement Ledger ({selectedMonthDetail.transactions?.length || 0} Transactions)
-                  </h4>
+                {(() => {
+                  const allMonthTxs = selectedMonthDetail.transactions || [];
+                  const incomeCount = allMonthTxs.filter(t => (t.type || 'expenditure') === 'income').length;
+                  const expenditureCount = allMonthTxs.filter(t => (t.type || 'expenditure') === 'expenditure').length;
 
-                  {(!selectedMonthDetail.transactions || selectedMonthDetail.transactions.length === 0) ? (
-                    <div className="py-8 text-center text-slate-500 text-xs">
-                      No transaction entries found for this month.
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto border border-slate-700 rounded-xl">
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead>
-                          <tr className="bg-slate-900/80 border-b border-slate-700 text-slate-400 uppercase font-semibold">
-                            <th className="py-2.5 px-3">Date</th>
-                            <th className="py-2.5 px-3">Type</th>
-                            <th className="py-2.5 px-3">Category</th>
-                            <th className="py-2.5 px-3">Amount</th>
-                            <th className="py-2.5 px-3">Payment Mode</th>
-                            <th className="py-2.5 px-3">Remarks / Notes</th>
-                            <th className="py-2.5 px-3 text-right">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800">
-                          {selectedMonthDetail.transactions.map(t => {
-                            const isIncome = (t.type || 'expenditure') === 'income';
-                            return (
-                              <tr key={t.id} className="hover:bg-slate-700/30 transition-colors">
-                                <td className="py-2.5 px-3 text-slate-300 whitespace-nowrap">
-                                  {new Date(t.spent_on).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                </td>
-                                <td className="py-2.5 px-3 whitespace-nowrap">
-                                  <span className={`inline-flex items-center gap-0.5 text-[11px] font-bold px-2 py-0.5 rounded-full border ${
-                                    isIncome
-                                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                      : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                                  }`}>
-                                    {isIncome ? '+ Income' : '- Expenditure'}
-                                  </span>
-                                </td>
-                                <td className="py-2.5 px-3 font-semibold text-white whitespace-nowrap">
-                                  {t.category}
-                                </td>
-                                <td className={`py-2.5 px-3 font-bold whitespace-nowrap ${isIncome ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                  {isIncome ? '+' : '-'}₹{t.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                                </td>
-                                <td className="py-2.5 px-3 text-slate-300">
-                                  {t.payment_mode || 'Cash'}
-                                </td>
-                                <td className="py-2.5 px-3 text-slate-300 max-w-xs truncate">
-                                  {t.note || '-'}
-                                </td>
-                                <td className="py-2.5 px-3 text-right">
-                                  <button
-                                    onClick={() => handleDeleteTransaction(t.id)}
-                                    className="p-1 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
-                                    title="Delete Entry"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </td>
+                  const displayedLedgerTransactions = allMonthTxs
+                    .filter(t => ledgerFilter === 'all' || (t.type || 'expenditure') === ledgerFilter)
+                    .sort((a, b) => {
+                      const diff = new Date(b.spent_on).getTime() - new Date(a.spent_on).getTime();
+                      if (diff !== 0) return diff;
+                      return (b.id || 0) - (a.id || 0);
+                    });
+
+                  return (
+                    <div className="pt-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                        <div>
+                          <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+                            Itemized Statement Ledger
+                          </h4>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            Transactions sorted newest first • {displayedLedgerTransactions.length} of {allMonthTxs.length} entries shown
+                          </p>
+                        </div>
+
+                        {/* Filter Buttons: All, Income, Expenditure */}
+                        <div className="flex items-center gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-slate-700/80">
+                          <button
+                            type="button"
+                            onClick={() => setLedgerFilter('all')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                              ledgerFilter === 'all'
+                                ? 'bg-blue-600 text-white shadow-sm'
+                                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                            }`}
+                          >
+                            <span>All</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                              ledgerFilter === 'all' ? 'bg-blue-500/50 text-white' : 'bg-slate-800 text-slate-400'
+                            }`}>
+                              {allMonthTxs.length}
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setLedgerFilter('income')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                              ledgerFilter === 'income'
+                                ? 'bg-emerald-600 text-white shadow-sm'
+                                : 'text-emerald-400 hover:text-emerald-300 hover:bg-slate-800'
+                            }`}
+                          >
+                            <ArrowUpRight className="w-3.5 h-3.5" />
+                            <span>Income</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                              ledgerFilter === 'income' ? 'bg-emerald-500/50 text-white' : 'bg-emerald-500/10 text-emerald-400'
+                            }`}>
+                              {incomeCount}
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setLedgerFilter('expenditure')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                              ledgerFilter === 'expenditure'
+                                ? 'bg-rose-600 text-white shadow-sm'
+                                : 'text-rose-400 hover:text-rose-300 hover:bg-slate-800'
+                            }`}
+                          >
+                            <ArrowDownRight className="w-3.5 h-3.5" />
+                            <span>Expenditure</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                              ledgerFilter === 'expenditure' ? 'bg-rose-500/50 text-white' : 'bg-rose-500/10 text-rose-400'
+                            }`}>
+                              {expenditureCount}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {displayedLedgerTransactions.length === 0 ? (
+                        <div className="py-8 text-center text-slate-500 text-xs bg-slate-900/40 rounded-xl border border-slate-700/60">
+                          No {ledgerFilter !== 'all' ? ledgerFilter : ''} transaction entries found for this month.
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto border border-slate-700 rounded-xl">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="bg-slate-900/80 border-b border-slate-700 text-slate-400 uppercase font-semibold">
+                                <th className="py-2.5 px-3">Date</th>
+                                <th className="py-2.5 px-3">Type</th>
+                                <th className="py-2.5 px-3">Category</th>
+                                <th className="py-2.5 px-3">Amount</th>
+                                <th className="py-2.5 px-3">Payment Mode</th>
+                                <th className="py-2.5 px-3">Remarks / Notes</th>
+                                <th className="py-2.5 px-3 text-right">Action</th>
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800">
+                              {displayedLedgerTransactions.map(t => {
+                                const isIncome = (t.type || 'expenditure') === 'income';
+                                return (
+                                  <tr key={t.id} className="hover:bg-slate-700/30 transition-colors">
+                                    <td className="py-2.5 px-3 text-slate-300 whitespace-nowrap">
+                                      {new Date(t.spent_on).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                    </td>
+                                    <td className="py-2.5 px-3 whitespace-nowrap">
+                                      <span className={`inline-flex items-center gap-0.5 text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                                        isIncome
+                                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                          : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                      }`}>
+                                        {isIncome ? '+ Income' : '- Expenditure'}
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-3 font-semibold text-white whitespace-nowrap">
+                                      {t.category}
+                                    </td>
+                                    <td className={`py-2.5 px-3 font-bold whitespace-nowrap ${isIncome ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                      {isIncome ? '+' : '-'}₹{t.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-slate-300">
+                                      {t.payment_mode || 'Cash'}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-slate-300 max-w-xs truncate">
+                                      {t.note || '-'}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right">
+                                      <button
+                                        onClick={() => handleDeleteTransaction(t.id)}
+                                        className="p-1 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                                        title="Delete Entry"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })()}
 
               </div>
             )}
@@ -803,7 +890,7 @@ export default function Reports() {
                     onChange={e => setForm({ ...form, payment_mode: e.target.value })}
                     className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500"
                   >
-                    {['Cash', 'UPI', 'Bank Transfer', 'Credit Card', 'Cheque', 'Other'].map(m => (
+                    {['UPI', 'Cash', 'Bank Transfer', 'Credit Card', 'Cheque', 'Other'].map(m => (
                       <option key={m} value={m}>{m}</option>
                     ))}
                   </select>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../api';
 import Sidebar from '../components/Sidebar';
 import { 
@@ -7,6 +8,7 @@ import {
 } from 'lucide-react';
 
 export default function Tasks() {
+  const [searchParams] = useSearchParams();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // all, pending, done, carried_forward, cancelled
@@ -48,8 +50,25 @@ export default function Tasks() {
   };
 
   useEffect(() => {
+    document.title = 'Personal CRM - Tasks';
     fetchTasks();
   }, []);
+
+  useEffect(() => {
+    const statusParam = searchParams.get('status');
+    const dateParam = searchParams.get('date');
+
+    if (statusParam && ['all', 'pending', 'done', 'carried_forward', 'cancelled'].includes(statusParam)) {
+      setFilter(statusParam);
+    }
+    if (dateParam) {
+      if (dateParam === 'today') {
+        setDateFilter(getTodayStr());
+      } else {
+        setDateFilter(dateParam);
+      }
+    }
+  }, [searchParams]);
 
   const handleUpdateStatus = async (id, status, carried_forward_to = null) => {
     try {

@@ -1,11 +1,31 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../prisma';
+import { authenticate } from '../middleware/auth';
 
 const router = Router();
-const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
+export const JWT_SECRET = process.env.JWT_SECRET || 'personal_crm_persistent_jwt_secret_key_2026';
+
+// Verify session and get current logged in user
+router.get('/me', authenticate, async (req, res) => {
+  try {
+    const userId = (req as any).user.userId;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true, role: true }
+    });
+
+    if (!user) {
+      return res.status(401).json({ error: 'User account not found' });
+    }
+
+    res.json({ user });
+  } catch (error) {
+    console.error('Session verify error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 router.post('/login', async (req, res) => {
   try {
@@ -25,10 +45,11 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    // Extended 90-day token lifetime so users stay logged in across browser sessions
     const token = jwt.sign(
       { userId: user.id, role: user.role, email: user.email },
       JWT_SECRET,
-      { expiresIn: '24h' }
+      { expiresIn: '90d' }
     );
 
     res.json({

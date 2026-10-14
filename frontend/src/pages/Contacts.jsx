@@ -18,6 +18,10 @@ export default function Contacts() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   
+  // Multi-select state for bulk deletion
+  const [selectedContactIds, setSelectedContactIds] = useState(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
   // VCF Upload state
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
@@ -65,6 +69,7 @@ export default function Contacts() {
   };
 
   useEffect(() => {
+    document.title = 'Personal CRM - Contacts';
     fetchContacts();
   }, []);
 
@@ -129,6 +134,44 @@ export default function Contacts() {
     } catch (error) {
       console.error('Error deleting contact:', error);
       alert('Failed to delete contact.');
+    }
+  };
+
+  const handleToggleSelect = (id) => {
+    setSelectedContactIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAllFiltered = () => {
+    if (selectedContactIds.size === filteredContacts.length) {
+      setSelectedContactIds(new Set());
+    } else {
+      setSelectedContactIds(new Set(filteredContacts.map(c => c.id)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedContactIds.size === 0) return;
+    const count = selectedContactIds.size;
+    if (!window.confirm(`Are you sure you want to permanently delete ${count} selected contact(s)? This will also remove their family records and reminder history.`)) {
+      return;
+    }
+
+    setBulkDeleting(true);
+    try {
+      await api.post('/api/contacts/bulk-delete', { ids: Array.from(selectedContactIds) });
+      setSelectedContactIds(new Set());
+      fetchContacts();
+      alert(`Successfully deleted ${count} contacts.`);
+    } catch (error) {
+      console.error('Error during bulk deletion:', error);
+      alert(error.response?.data?.error || 'Failed to delete selected contacts');
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -257,24 +300,94 @@ export default function Contacts() {
           </div>
         </header>
 
-        {/* Search Bar & Stats */}
+        {/* Search Bar, Multi-select All & Stats */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6 bg-slate-800/60 p-4 rounded-2xl border border-slate-700">
-          <div className="relative w-full sm:w-96">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-            <input
-              type="text"
-              placeholder="Search by name, phone, tags, email..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-2 text-sm text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
-            />
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="flex items-center gap-2 bg-slate-900/80 px-3 py-2 rounded-xl border border-slate-700/80">
+              <input
+                type="checkbox"
+                id="selectAllContacts"
+                checked={filteredContacts.length > 0 && selectedContactIds.size === filteredContacts.length}
+                onChange={handleSelectAllFiltered}
+                className="w-4 h-4 rounded border-slate-600 bg-slate-900 text-blue-600 focus:ring-blue-500 cursor-pointer"
+              />
+              <label htmlFor="selectAllContacts" className="text-xs font-semibold text-slate-300 cursor-pointer select-none">
+                Select All
+              </label>
+            </div>
+
+            <div className="relative flex-1 sm:w-80">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+              <input
+                type="text"
+                placeholder="Search by name, phone, tags, email..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-2 text-sm text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
+              />
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-400 self-end sm:self-auto">
-            <Users className="w-4 h-4 text-blue-400" />
-            <span>Showing <strong>{filteredContacts.length}</strong> of <strong>{contacts.length}</strong> contacts</span>
+          <div className="flex items-center gap-3 text-xs text-slate-400 self-end sm:self-auto">
+            {selectedContactIds.size > 0 && (
+              <span className="text-blue-400 font-bold bg-blue-500/10 border border-blue-500/20 px-2.5 py-1 rounded-lg">
+                {selectedContactIds.size} selected
+              </span>
+            )}
+            <div className="flex items-center gap-1.5">
+              <Users className="w-4 h-4 text-blue-400" />
+              <span>Showing <strong>{filteredContacts.length}</strong> of <strong>{contacts.length}</strong> contacts</span>
+            </div>
           </div>
         </div>
+
+        {/* Multi-Select Floating / Sticky Bulk Action Banner */}
+        {selectedContactIds.size > 0 && (
+          <div className="sticky top-2 z-30 mb-6 p-4 rounded-2xl bg-slate-800/95 backdrop-blur-md border-2 border-blue-500/70 shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-blue-500/20 text-blue-400 rounded-xl border border-blue-500/30">
+                <Users className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-bold text-white text-sm flex items-center gap-2">
+                  <span>{selectedContactIds.size} {selectedContactIds.size === 1 ? 'Contact' : 'Contacts'} Selected</span>
+                  <span className="text-[11px] font-normal text-slate-400">({filteredContacts.length} visible)</span>
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  You can delete all selected contacts and their associated family logs simultaneously.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 self-end sm:self-auto flex-wrap">
+              <button
+                type="button"
+                onClick={handleSelectAllFiltered}
+                className="px-3.5 py-2 text-xs font-semibold text-slate-300 hover:text-white bg-slate-700/80 hover:bg-slate-700 rounded-xl transition-colors cursor-pointer"
+              >
+                {selectedContactIds.size === filteredContacts.length ? 'Deselect All' : `Select All (${filteredContacts.length})`}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedContactIds(new Set())}
+                className="px-3.5 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 bg-slate-900/60 hover:bg-slate-900 rounded-xl transition-colors cursor-pointer"
+              >
+                Clear Selection
+              </button>
+
+              <button
+                type="button"
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+                className="flex items-center gap-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-xl text-xs shadow-lg shadow-rose-950/40 transition-all cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                {bulkDeleting ? 'Deleting...' : `Delete Selected (${selectedContactIds.size})`}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Wishes Result Banner */}
         {wishResult && (
@@ -311,21 +424,39 @@ export default function Contacts() {
                 </button>
               </div>
             ) : (
-              filteredContacts.map(contact => (
-                <div key={contact.id} className="bg-slate-800 rounded-2xl shadow-md border border-slate-700/80 overflow-hidden flex flex-col hover:border-slate-600 transition-colors">
-                  <div className="p-6 pb-4 border-b border-slate-700/50">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-xl font-bold text-white mb-1">{contact.name}</h3>
-                        {contact.tags && (
-                          <div className="inline-flex items-center gap-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-0.5 rounded-lg text-xs font-semibold mt-0.5">
-                            <Tag className="w-3 h-3" />
-                            <span>{contact.tags}</span>
+              filteredContacts.map(contact => {
+                const isSelected = selectedContactIds.has(contact.id);
+                return (
+                  <div 
+                    key={contact.id} 
+                    className={`bg-slate-800 rounded-2xl shadow-md border overflow-hidden flex flex-col transition-all ${
+                      isSelected 
+                        ? 'border-blue-500 ring-2 ring-blue-500/40 bg-slate-800/95' 
+                        : 'border-slate-700/80 hover:border-slate-600'
+                    }`}
+                  >
+                    <div className="p-6 pb-4 border-b border-slate-700/50">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelect(contact.id)}
+                            className="mt-1.5 w-4 h-4 rounded border-slate-600 bg-slate-900 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            title="Select contact"
+                          />
+                          <div>
+                            <h3 className="text-xl font-bold text-white mb-1">{contact.name}</h3>
+                            {contact.tags && (
+                              <div className="inline-flex items-center gap-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-0.5 rounded-lg text-xs font-semibold mt-0.5">
+                                <Tag className="w-3 h-3" />
+                                <span>{contact.tags}</span>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
+                        </div>
 
-                      {/* Edit and Delete Actions */}
+                        {/* Edit and Delete Actions */}
                       <div className="flex items-center gap-1 bg-slate-900/60 p-1 rounded-xl border border-slate-700/60">
                         <button
                           onClick={() => handleOpenEdit(contact)}
@@ -471,7 +602,8 @@ export default function Contacts() {
                     )}
                   </div>
                 </div>
-              ))
+              );
+            })
             )}
           </div>
         )}

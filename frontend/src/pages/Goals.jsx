@@ -41,6 +41,7 @@ export default function Goals() {
   };
 
   useEffect(() => {
+    document.title = 'Personal CRM - Goals';
     fetchGoals();
   }, []);
 

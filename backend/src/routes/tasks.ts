@@ -1,24 +1,8 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../prisma';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
-const prisma = new PrismaClient();
-
-// Get ALL tasks (for full view page)
-router.get('/all', authenticate, async (req, res) => {
-  try {
-    const userId = (req as any).user.userId;
-    const tasks = await prisma.task.findMany({
-      where: { created_by: userId },
-      orderBy: { event_date: 'asc' }
-    });
-    res.json(tasks);
-  } catch (error) {
-    console.error('Error fetching all tasks:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
 
 // Helper to parse date string into UTC startOfDay and endOfDay
 function parseTargetDateBounds(dateInput?: string): { startOfDay: Date; endOfDay: Date } {
@@ -51,12 +35,184 @@ function parseTargetDateBounds(dateInput?: string): { startOfDay: Date; endOfDay
   return { startOfDay, endOfDay };
 }
 
+// Automatically generate birthday tasks for contacts and family members on target date
+export async function autoGenerateBirthdayTasks(dateInput?: string | Date, forUserId?: number) {
+  try {
+    let targetYear: number;
+    let targetMonth: number; // 1-12
+    let targetDay: number; // 1-31
+
+    if (dateInput) {
+      if (typeof dateInput === 'string') {
+        const dateStr = dateInput.includes('T') ? dateInput.split('T')[0]! : dateInput;
+        const parts = dateStr.split('-');
+        if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+          targetYear = parseInt(parts[0], 10);
+          targetMonth = parseInt(parts[1], 10);
+          targetDay = parseInt(parts[2], 10);
+        } else {
+          const d = new Date(dateInput);
+          targetYear = d.getFullYear();
+          targetMonth = d.getMonth() + 1;
+          targetDay = d.getDate();
+        }
+      } else {
+        targetYear = dateInput.getFullYear();
+        targetMonth = dateInput.getMonth() + 1;
+        targetDay = dateInput.getDate();
+      }
+    } else {
+      const now = new Date();
+      targetYear = now.getFullYear();
+      targetMonth = now.getMonth() + 1;
+      targetDay = now.getDate();
+    }
+
+    // Determine target user
+    let targetUserId = forUserId;
+    if (!targetUserId) {
+      const admin = await prisma.user.findFirst({ where: { role: 'admin' } });
+      targetUserId = admin ? admin.id : 1;
+    }
+
+    const startOfDay = new Date(Date.UTC(targetYear, targetMonth - 1, targetDay, 0, 0, 0, 0));
+    const endOfDay = new Date(Date.UTC(targetYear, targetMonth - 1, targetDay, 23, 59, 59, 999));
+
+    // Get all existing tasks on this date for the user to prevent duplicate task creation
+    const existingTasks = await prisma.task.findMany({
+      where: {
+        created_by: targetUserId,
+        event_date: {
+          gte: startOfDay,
+          lte: endOfDay
+        }
+      }
+    });
+
+    // Fetch all contacts with family members
+    const contacts = await prisma.contact.findMany({
+      include: { familyMembers: true }
+    });
+
+    for (const contact of contacts) {
+      // 1. Check Contact's own birthday
+      if (contact.date_of_birth) {
+        const dob = new Date(contact.date_of_birth);
+        const dobMonthUtc = dob.getUTCMonth() + 1;
+        const dobDayUtc = dob.getUTCDate();
+        const dobMonthLocal = dob.getMonth() + 1;
+        const dobDayLocal = dob.getDate();
+
+        if (
+          (dobMonthUtc === targetMonth && dobDayUtc === targetDay) ||
+          (dobMonthLocal === targetMonth && dobDayLocal === targetDay)
+        ) {
+          const taskTitle = `🎂 Birthday: ${contact.name}`;
+          const alreadyExists = existingTasks.some(
+            t => t.title.toLowerCase().includes(contact.name.toLowerCase()) && t.title.toLowerCase().includes('birthday')
+          );
+          if (!alreadyExists) {
+            const newTask = await prisma.task.create({
+              data: {
+                title: taskTitle,
+                description: `Wish ${contact.name} a Happy Birthday! (Phone: ${contact.phone}${contact.email ? `, Email: ${contact.email}` : ''})`,
+                event_date: startOfDay,
+                status: 'pending',
+                created_by: targetUserId
+              }
+            });
+            existingTasks.push(newTask);
+          }
+        }
+      }
+
+      // 2. Check Family Members' birthdays
+      for (const member of contact.familyMembers) {
+        if (member.date_of_birth) {
+          const mDob = new Date(member.date_of_birth);
+          const mMonthUtc = mDob.getUTCMonth() + 1;
+          const mDayUtc = mDob.getUTCDate();
+          const mMonthLocal = mDob.getMonth() + 1;
+          const mDayLocal = mDob.getDate();
+
+          if (
+            (mMonthUtc === targetMonth && mDayUtc === targetDay) ||
+            (mMonthLocal === targetMonth && mDayLocal === targetDay)
+          ) {
+            const taskTitle = `🎈 Birthday: ${member.full_name} (${member.relation} of ${contact.name})`;
+            const alreadyExists = existingTasks.some(
+              t => t.title.toLowerCase().includes(member.full_name.toLowerCase()) && t.title.toLowerCase().includes('birthday')
+            );
+            if (!alreadyExists) {
+              const newTask = await prisma.task.create({
+                data: {
+                  title: taskTitle,
+                  description: `Wish ${member.full_name} (${member.relation} of ${contact.name}) a Happy Birthday! (Contact Phone: ${contact.phone})`,
+                  event_date: startOfDay,
+                  status: 'pending',
+                  created_by: targetUserId
+                }
+              });
+              existingTasks.push(newTask);
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error auto-generating birthday tasks:', err);
+  }
+}
+
+// Get ALL tasks (for full view page)
+router.get('/all', authenticate, async (req, res) => {
+  try {
+    const userId = (req as any).user.userId;
+    // Ensure today's birthday tasks are auto-registered
+    await autoGenerateBirthdayTasks(new Date(), userId);
+
+    const tasks = await prisma.task.findMany({
+      where: { created_by: userId },
+      orderBy: { event_date: 'asc' }
+    });
+    res.json(tasks);
+  } catch (error) {
+    console.error('Error fetching all tasks:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get task calendar summary counts for a given month/year
 router.get('/calendar-summary', authenticate, async (req, res) => {
   try {
     const userId = (req as any).user.userId;
     const year = parseInt(req.query.year as string) || new Date().getFullYear();
     const month = parseInt(req.query.month as string) || (new Date().getMonth() + 1); // 1-indexed
+
+    // Auto-generate birthday tasks for days in this month
+    const contactsInMonth = await prisma.contact.findMany({ include: { familyMembers: true } });
+    for (const c of contactsInMonth) {
+      if (c.date_of_birth) {
+        const dob = new Date(c.date_of_birth);
+        const m = dob.getUTCMonth() + 1;
+        const d = dob.getUTCDate();
+        if (m === month) {
+          const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          await autoGenerateBirthdayTasks(dateStr, userId);
+        }
+      }
+      for (const f of c.familyMembers) {
+        if (f.date_of_birth) {
+          const dob = new Date(f.date_of_birth);
+          const m = dob.getUTCMonth() + 1;
+          const d = dob.getUTCDate();
+          if (m === month) {
+            const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            await autoGenerateBirthdayTasks(dateStr, userId);
+          }
+        }
+      }
+    }
 
     // Start and end of month in UTC
     const startOfMonth = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
@@ -118,6 +274,9 @@ router.get('/', authenticate, async (req, res) => {
   try {
     const userId = (req as any).user.userId;
     const { startOfDay, endOfDay } = parseTargetDateBounds(req.query.date as string);
+
+    // Auto-generate any birthday tasks for this specific date
+    await autoGenerateBirthdayTasks(req.query.date as string || new Date(), userId);
 
     const tasks = await prisma.task.findMany({
       where: {

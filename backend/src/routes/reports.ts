@@ -1,9 +1,8 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../prisma';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Get aggregated expenses by category (backward compatibility)
 router.get('/expenses', authenticate, async (req, res) => {
@@ -87,7 +86,10 @@ router.get('/monthly-statement', authenticate, async (req, res) => {
     // Fetch all transactions for the user
     const transactions = await prisma.expense.findMany({
       where: { created_by: userId },
-      orderBy: { spent_on: 'desc' }
+      orderBy: [
+        { spent_on: 'desc' },
+        { id: 'desc' }
+      ]
     });
 
     // Group transactions by month: 'YYYY-MM'
