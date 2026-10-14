@@ -2,6 +2,7 @@ import { Client, LocalAuth } from 'whatsapp-web.js';
 import qrcode from 'qrcode';
 import path from 'path';
 import fs from 'fs';
+import { execSync } from 'child_process';
 
 export type WhatsAppStatus = 'DISCONNECTED' | 'CONNECTING' | 'QR_RECEIVED' | 'CONNECTED';
 
@@ -14,6 +15,73 @@ class WhatsAppService {
   private lastError: string | null = null;
 
   constructor() {}
+
+  private resolveChromePath(): string | undefined {
+    // 1. Explicit env var override
+    if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+      console.log('Using PUPPETEER_EXECUTABLE_PATH:', process.env.PUPPETEER_EXECUTABLE_PATH);
+      return process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+
+    // 2. Run puppeteer browsers install to verify or download Chrome and capture its exact path
+    try {
+      console.log('Resolving Chrome binary path via puppeteer CLI...');
+      const output = execSync('npx puppeteer browsers install chrome', {
+        encoding: 'utf8',
+        timeout: 90000
+      });
+      const match = output.match(/chrome@[^\s]+\s+([^\r\n]+)/);
+      if (match && match[1]) {
+        const detectedPath = match[1].trim();
+        if (fs.existsSync(detectedPath)) {
+          console.log('Verified Chrome binary at:', detectedPath);
+          return detectedPath;
+        }
+      }
+    } catch (e: any) {
+      console.warn('Warning during puppeteer install check:', e?.message);
+    }
+
+    // 3. Fallback: recursively search common cache folders
+    const searchDirs = [
+      '/opt/render/.cache/puppeteer/chrome',
+      path.join(process.env.HOME || '', '.cache/puppeteer/chrome'),
+      path.join(process.env.USERPROFILE || '', '.cache/puppeteer/chrome'),
+      path.join(__dirname, '../../.cache/puppeteer/chrome')
+    ];
+
+    const findBinary = (dir: string): string | null => {
+      try {
+        const files = fs.readdirSync(dir);
+        for (const file of files) {
+          const fullPath = path.join(dir, file);
+          const stat = fs.statSync(fullPath);
+          if (stat.isDirectory()) {
+            const found = findBinary(fullPath);
+            if (found) return found;
+          } else if (file === 'chrome' || file === 'chrome.exe') {
+            return fullPath;
+          }
+        }
+      } catch {
+        // ignore read error
+      }
+      return null;
+    };
+
+    for (const dir of searchDirs) {
+      if (fs.existsSync(dir)) {
+        const found = findBinary(dir);
+        if (found) {
+          console.log('Discovered Chrome binary at:', found);
+          return found;
+        }
+      }
+    }
+
+    console.warn('Could not detect custom Chrome path; falling back to Puppeteer defaults.');
+    return undefined;
+  }
 
   public async initialize(force: boolean = false) {
     if (this.client && !force) {
@@ -35,36 +103,8 @@ class WhatsAppService {
     this.status = 'CONNECTING';
     console.log('Initializing WhatsApp client...');
 
-    // Locate Chrome executable if installed via puppeteer browsers install
-    let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
-    if (!executablePath) {
-      const cacheDir = path.join(__dirname, '../../.cache/puppeteer/chrome');
-      if (fs.existsSync(cacheDir)) {
-        try {
-          const findChrome = (dir: string): string | null => {
-            const files = fs.readdirSync(dir);
-            for (const file of files) {
-              const fullPath = path.join(dir, file);
-              const stat = fs.statSync(fullPath);
-              if (stat.isDirectory()) {
-                const found = findChrome(fullPath);
-                if (found) return found;
-              } else if (file === 'chrome' || file === 'chrome.exe') {
-                return fullPath;
-              }
-            }
-            return null;
-          };
-          const found = findChrome(cacheDir);
-          if (found) {
-            executablePath = found;
-            console.log('Using cached Chrome binary:', executablePath);
-          }
-        } catch (e) {
-          console.warn('Could not traverse cache directory:', e);
-        }
-      }
-    }
+    // Resolve verified Chrome binary executable
+    const executablePath = this.resolveChromePath();
 
     const puppeteerArgs = [
       '--no-sandbox',
