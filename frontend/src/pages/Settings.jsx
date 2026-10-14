@@ -19,6 +19,7 @@ export default function Settings() {
   // WhatsApp state
   const [waStatus, setWaStatus] = useState({ status: 'DISCONNECTED', qrCode: null, user: null });
   const [waLoading, setWaLoading] = useState(false);
+  const [connectingElapsed, setConnectingElapsed] = useState(0);
   const [testForm, setTestForm] = useState({ phone: '', message: '' });
   const [sendingTest, setSendingTest] = useState(false);
   const pollingRef = useRef(null);
@@ -109,6 +110,22 @@ export default function Settings() {
 
     return () => clearInterval(interval);
   }, [currentUser, waStatus.status]);
+
+  // Elapsed seconds timer during connection attempt
+  useEffect(() => {
+    let timer;
+    if (waStatus.status === 'CONNECTING') {
+      setConnectingElapsed(0);
+      timer = setInterval(() => {
+        setConnectingElapsed(prev => prev + 1);
+      }, 1000);
+    } else {
+      setConnectingElapsed(0);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [waStatus.status]);
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
@@ -293,9 +310,12 @@ export default function Settings() {
                   ) : waStatus.status === 'CONNECTING' || waLoading ? (
                     <div className="text-center py-8 space-y-4">
                       <RefreshCw className="w-10 h-10 text-blue-400 animate-spin mx-auto" />
-                      <p className="text-sm font-medium text-slate-200">Starting WhatsApp Client...</p>
-                      <p className="text-xs text-slate-400 max-w-[250px]">
-                        Initializing headless browser & rendering scan code. This usually takes 20-35 seconds...
+                      <div>
+                        <p className="text-sm font-medium text-slate-200">Starting WhatsApp Client...</p>
+                        <p className="text-xs text-blue-400 font-mono mt-0.5">Elapsed: {connectingElapsed}s</p>
+                      </div>
+                      <p className="text-xs text-slate-400 max-w-[270px] leading-relaxed">
+                        Initializing headless Chrome & loading WhatsApp Web. On cloud servers, cold start typically takes 40-75s. Please wait...
                       </p>
                     </div>
                   ) : waStatus.error ? (

@@ -26,7 +26,7 @@ class WhatsAppService {
         if (stat.isDirectory()) {
           const found = this.findBinary(fullPath);
           if (found) return found;
-        } else if (file === 'chrome' || file === 'chrome.exe') {
+        } else if (file === 'chrome' || file === 'chrome.exe' || file === 'google-chrome-stable' || file === 'google-chrome') {
           return fullPath;
         }
       }
@@ -43,7 +43,21 @@ class WhatsAppService {
       return process.env.PUPPETEER_EXECUTABLE_PATH;
     }
 
-    // 2. Fast filesystem check across standard Puppeteer cache paths (0ms, non-blocking)
+    // 2. Standard Linux global paths
+    const systemPaths = [
+      '/usr/bin/google-chrome-stable',
+      '/usr/bin/google-chrome',
+      '/usr/bin/chromium',
+      '/usr/bin/chromium-browser'
+    ];
+    for (const sysPath of systemPaths) {
+      if (fs.existsSync(sysPath)) {
+        console.log('System Chrome binary located at:', sysPath);
+        return sysPath;
+      }
+    }
+
+    // 3. Fast filesystem check across standard Puppeteer cache paths (0ms, non-blocking)
     const searchDirs = [
       '/opt/render/.cache/puppeteer/chrome',
       path.join(process.env.HOME || '', '.cache/puppeteer/chrome'),
@@ -62,7 +76,7 @@ class WhatsAppService {
       }
     }
 
-    // 3. Fallback: only install if completely absent from disk
+    // 4. Fallback: only install if completely absent from disk
     try {
       console.log('Chrome not found on disk, running puppeteer browsers install...');
       const output = execSync('npx puppeteer browsers install chrome', {
@@ -124,7 +138,12 @@ class WhatsAppService {
       '--no-first-run',
       '--no-zygote',
       '--disable-gpu',
-      '--disable-extensions'
+      '--disable-extensions',
+      '--renderer-process-limit=1',
+      '--disable-background-networking',
+      '--disable-default-apps',
+      '--disable-sync',
+      '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
     ];
 
     try {
@@ -136,22 +155,23 @@ class WhatsAppService {
         puppeteer: {
           headless: true,
           executablePath: executablePath || undefined,
+          protocolTimeout: 120000,
           args: puppeteerArgs
         }
       });
 
-      // 55-second safeguard timeout to prevent hanging UI
+      // 120-second timeout safeguard to give cloud container cold start adequate time
       this.qrTimeoutTimer = setTimeout(() => {
         if (this.status === 'CONNECTING') {
-          console.warn('WhatsApp initialization timed out waiting for QR code');
+          console.warn('WhatsApp initialization timed out waiting for QR code after 120s');
           this.status = 'DISCONNECTED';
-          this.lastError = 'Browser initialization timed out (took > 55s). Please click Try Again.';
+          this.lastError = 'Browser initialization timed out (> 120s). Please click Try Again.';
           if (this.client) {
             this.client.destroy().catch(() => {});
             this.client = null;
           }
         }
-      }, 55000);
+      }, 120000);
 
       this.client.on('qr', async (qr) => {
         console.log('WhatsApp QR code received.');
