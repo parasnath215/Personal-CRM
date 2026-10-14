@@ -18,6 +18,8 @@ dist/
 .wwebjs_cache/
 backend/.wwebjs_auth/
 backend/.wwebjs_cache/
+.baileys_auth/
+backend/.baileys_auth/
 .cache/
 backend/.cache/
 

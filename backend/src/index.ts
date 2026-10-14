@@ -54,7 +54,7 @@ app.listen(PORT, async () => {
   await syncAllHotelIncome();
 
   // Auto-initialize WhatsApp if a saved session is found
-  const sessionPath = path.join(__dirname, '../.wwebjs_auth/session-crm-session');
+  const sessionPath = path.join(__dirname, '../.baileys_auth/creds.json');
   if (fs.existsSync(sessionPath)) {
     console.log('Saved WhatsApp session found. Auto-initializing WhatsApp client...');
     whatsappService.initialize();

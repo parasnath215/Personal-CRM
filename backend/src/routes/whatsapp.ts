@@ -18,7 +18,7 @@ router.get('/status', authenticate, (req, res) => {
 // Initialize WhatsApp client (e.g. generate QR code)
 router.post('/connect', authenticate, (req, res) => {
   try {
-    whatsappService.initialize();
+    whatsappService.initialize(true);
     res.json({ message: 'WhatsApp client initialization started' });
   } catch (error) {
     console.error('Error initializing WhatsApp:', error);

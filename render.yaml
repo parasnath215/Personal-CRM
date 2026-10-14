@@ -11,7 +11,7 @@ services:
     plan: free
     region: singapore
     rootDir: backend
-    buildCommand: chmod +x ./render-build.sh && ./render-build.sh
+    buildCommand: npm install && npm run build
     startCommand: npm run start
     envVars:
       - key: PORT

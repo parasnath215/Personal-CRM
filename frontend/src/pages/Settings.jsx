@@ -315,7 +315,7 @@ export default function Settings() {
                         <p className="text-xs text-blue-400 font-mono mt-0.5">Elapsed: {connectingElapsed}s</p>
                       </div>
                       <p className="text-xs text-slate-400 max-w-[270px] leading-relaxed">
-                        Initializing headless Chrome & loading WhatsApp Web. On cloud servers, cold start typically takes 40-75s. Please wait...
+                        Connecting to WhatsApp WebSocket server. QR scan code will appear in a few seconds...
                       </p>
                     </div>
                   ) : waStatus.error ? (

@@ -1,245 +1,157 @@
-import { Client, LocalAuth } from 'whatsapp-web.js';
+import makeWASocket, {
+  DisconnectReason,
+  useMultiFileAuthState,
+  fetchLatestBaileysVersion,
+  WASocket
+} from '@whiskeysockets/baileys';
+import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode';
 import path from 'path';
 import fs from 'fs';
-import { execSync } from 'child_process';
+import pino from 'pino';
 
 export type WhatsAppStatus = 'DISCONNECTED' | 'CONNECTING' | 'QR_RECEIVED' | 'CONNECTED';
 
 class WhatsAppService {
-  private client: Client | null = null;
+  private sock: WASocket | null = null;
   private status: WhatsAppStatus = 'DISCONNECTED';
   private qrCodeDataUrl: string | null = null;
   private connectedUser: { name: string; number: string } | null = null;
-  private authDir = path.join(__dirname, '../../.wwebjs_auth');
+  private authDir = path.join(__dirname, '../../.baileys_auth');
   private lastError: string | null = null;
-  private qrTimeoutTimer: NodeJS.Timeout | null = null;
+  private isExplicitDisconnect: boolean = false;
+  private reconnectTimeout: NodeJS.Timeout | null = null;
+  private reconnectAttempts = 0;
+  private readonly maxReconnectAttempts = 5;
 
   constructor() {}
 
-  private findBinary(dir: string): string | null {
-    try {
-      const files = fs.readdirSync(dir);
-      for (const file of files) {
-        const fullPath = path.join(dir, file);
-        const stat = fs.statSync(fullPath);
-        if (stat.isDirectory()) {
-          const found = this.findBinary(fullPath);
-          if (found) return found;
-        } else if (file === 'chrome' || file === 'chrome.exe' || file === 'google-chrome-stable' || file === 'google-chrome') {
-          return fullPath;
-        }
-      }
-    } catch {
-      // ignore read error
-    }
-    return null;
-  }
-
-  private resolveChromePath(): string | undefined {
-    // 1. Explicit env var override
-    if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
-      console.log('Using PUPPETEER_EXECUTABLE_PATH:', process.env.PUPPETEER_EXECUTABLE_PATH);
-      return process.env.PUPPETEER_EXECUTABLE_PATH;
-    }
-
-    // 2. Standard Linux global paths
-    const systemPaths = [
-      '/usr/bin/google-chrome-stable',
-      '/usr/bin/google-chrome',
-      '/usr/bin/chromium',
-      '/usr/bin/chromium-browser'
-    ];
-    for (const sysPath of systemPaths) {
-      if (fs.existsSync(sysPath)) {
-        console.log('System Chrome binary located at:', sysPath);
-        return sysPath;
-      }
-    }
-
-    // 3. Fast filesystem check across standard Puppeteer cache paths (0ms, non-blocking)
-    const searchDirs = [
-      '/opt/render/.cache/puppeteer/chrome',
-      path.join(process.env.HOME || '', '.cache/puppeteer/chrome'),
-      path.join(process.env.USERPROFILE || '', '.cache/puppeteer/chrome'),
-      path.join(__dirname, '../../.cache/puppeteer/chrome'),
-      path.join(process.cwd(), '.cache/puppeteer/chrome')
-    ];
-
-    for (const dir of searchDirs) {
-      if (fs.existsSync(dir)) {
-        const found = this.findBinary(dir);
-        if (found) {
-          console.log('Instantaneous Chrome binary found at:', found);
-          return found;
-        }
-      }
-    }
-
-    // 4. Fallback: only install if completely absent from disk
-    try {
-      console.log('Chrome not found on disk, running puppeteer browsers install...');
-      const output = execSync('npx puppeteer browsers install chrome', {
-        encoding: 'utf8',
-        timeout: 90000
-      });
-      const match = output.match(/chrome@[^\s]+\s+([^\r\n]+)/);
-      if (match && match[1]) {
-        const detectedPath = match[1].trim();
-        if (fs.existsSync(detectedPath)) {
-          console.log('Verified Chrome binary installed at:', detectedPath);
-          return detectedPath;
-        }
-      }
-    } catch (e: any) {
-      console.warn('Puppeteer browser install warning:', e?.message);
-    }
-
-    return undefined;
-  }
-
-  private clearQrTimeout() {
-    if (this.qrTimeoutTimer) {
-      clearTimeout(this.qrTimeoutTimer);
-      this.qrTimeoutTimer = null;
-    }
-  }
-
   public async initialize(force: boolean = false) {
-    if (this.client && !force) {
+    this.isExplicitDisconnect = false;
+
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
+    if (this.sock && !force) {
       if (this.status === 'CONNECTING' || this.status === 'QR_RECEIVED' || this.status === 'CONNECTED') {
         return;
       }
     }
 
-    this.clearQrTimeout();
-
-    if (this.client) {
+    // Teardown any existing socket
+    if (this.sock) {
       try {
-        await this.client.destroy().catch(() => {});
+        this.sock.ev.removeAllListeners('connection.update');
+        this.sock.ev.removeAllListeners('creds.update');
+        this.sock.end(undefined);
       } catch (e) {
-        // ignore destroy error
+        // ignore socket close errors
       }
-      this.client = null;
+      this.sock = null;
     }
 
     this.lastError = null;
     this.status = 'CONNECTING';
-    console.log('Initializing WhatsApp client...');
-
-    // Resolve verified Chrome binary executable fast
-    const executablePath = this.resolveChromePath();
-
-    const puppeteerArgs = [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--disable-gpu',
-      '--disable-extensions',
-      '--renderer-process-limit=1',
-      '--disable-background-networking',
-      '--disable-default-apps',
-      '--disable-sync',
-      '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-    ];
+    console.log('[WhatsAppService] Initializing Baileys lightweight WebSocket client...');
 
     try {
-      this.client = new Client({
-        authStrategy: new LocalAuth({
-          clientId: 'crm-session',
-          dataPath: this.authDir
-        }),
-        puppeteer: {
-          headless: true,
-          executablePath: executablePath || undefined,
-          protocolTimeout: 120000,
-          args: puppeteerArgs
-        }
+      if (!fs.existsSync(this.authDir)) {
+        fs.mkdirSync(this.authDir, { recursive: true });
+      }
+
+      const { state, saveCreds } = await useMultiFileAuthState(this.authDir);
+      const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: undefined }));
+
+      this.sock = makeWASocket({
+        version,
+        auth: state,
+        logger: pino({ level: 'silent' }),
+        printQRInTerminal: false,
+        browser: ['Personal CRM', 'Chrome', '1.0.0']
       });
 
-      // 120-second timeout safeguard to give cloud container cold start adequate time
-      this.qrTimeoutTimer = setTimeout(() => {
-        if (this.status === 'CONNECTING') {
-          console.warn('WhatsApp initialization timed out waiting for QR code after 120s');
-          this.status = 'DISCONNECTED';
-          this.lastError = 'Browser initialization timed out (> 120s). Please click Try Again.';
-          if (this.client) {
-            this.client.destroy().catch(() => {});
-            this.client = null;
+      this.sock.ev.on('creds.update', saveCreds);
+
+      this.sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+
+        if (qr) {
+          console.log('[WhatsAppService] Baileys QR code received.');
+          try {
+            this.qrCodeDataUrl = await qrcode.toDataURL(qr);
+            this.status = 'QR_RECEIVED';
+            this.lastError = null;
+          } catch (err: any) {
+            console.error('[WhatsAppService] Error generating QR data URL:', err);
+            this.lastError = 'Failed to generate QR image';
           }
         }
-      }, 120000);
 
-      this.client.on('qr', async (qr) => {
-        console.log('WhatsApp QR code received.');
-        this.clearQrTimeout();
-        try {
-          this.qrCodeDataUrl = await qrcode.toDataURL(qr);
-          this.status = 'QR_RECEIVED';
+        if (connection === 'close') {
+          const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
+          const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+          console.log(`[WhatsAppService] Connection closed (status: ${statusCode}, loggedOut: ${isLoggedOut})`);
+
+          this.sock = null;
+
+          if (isLoggedOut) {
+            console.log('[WhatsAppService] Session logged out. Cleaning up credentials...');
+            this.status = 'DISCONNECTED';
+            this.qrCodeDataUrl = null;
+            this.connectedUser = null;
+            this.lastError = null;
+            this.cleanupAuthDir();
+          } else if (!this.isExplicitDisconnect) {
+            const isRestart = statusCode === DisconnectReason.restartRequired;
+
+            if (this.reconnectAttempts >= this.maxReconnectAttempts && !isRestart) {
+              console.warn('[WhatsAppService] Max reconnect attempts reached. Setting status to DISCONNECTED.');
+              this.status = 'DISCONNECTED';
+              this.qrCodeDataUrl = null;
+              this.lastError = 'Connection dropped. Please click Connect WhatsApp to reconnect.';
+              return;
+            }
+
+            this.reconnectAttempts++;
+            const delay = isRestart ? 500 : 3000;
+            console.log(`[WhatsAppService] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}, reason: ${isRestart ? 'restartRequired' : 'temporaryDisconnect'})...`);
+            
+            this.status = 'CONNECTING';
+
+            if (this.reconnectTimeout) {
+              clearTimeout(this.reconnectTimeout);
+            }
+
+            this.reconnectTimeout = setTimeout(() => {
+              this.initialize(true);
+            }, delay);
+          } else {
+            this.status = 'DISCONNECTED';
+            this.qrCodeDataUrl = null;
+            this.connectedUser = null;
+          }
+        } else if (connection === 'open') {
+          console.log('[WhatsAppService] WhatsApp connection open & ready!');
+          this.status = 'CONNECTED';
+          this.qrCodeDataUrl = null;
           this.lastError = null;
-        } catch (err: any) {
-          console.error('Error generating QR code data URL:', err);
-          this.lastError = 'Failed to generate QR image';
-        }
-      });
+          this.reconnectAttempts = 0;
 
-      this.client.on('authenticated', () => {
-        console.log('WhatsApp client authenticated.');
-        this.clearQrTimeout();
-        this.status = 'CONNECTING';
-        this.lastError = null;
-      });
-
-      this.client.on('auth_failure', (msg) => {
-        console.error('WhatsApp authentication failure:', msg);
-        this.clearQrTimeout();
-        this.status = 'DISCONNECTED';
-        this.lastError = typeof msg === 'string' ? msg : 'Authentication failed';
-        this.qrCodeDataUrl = null;
-        this.client = null;
-      });
-
-      this.client.on('ready', () => {
-        console.log('WhatsApp client is ready.');
-        this.clearQrTimeout();
-        this.status = 'CONNECTED';
-        this.qrCodeDataUrl = null;
-        this.lastError = null;
-        if (this.client) {
-          const info = this.client.info;
+          const rawId = this.sock?.user?.id || '';
+          const cleanPhone = rawId.split(':')[0] || rawId.split('@')[0];
           this.connectedUser = {
-            name: info?.pushname || 'CRM WhatsApp User',
-            number: info?.wid?.user || ''
+            name: this.sock?.user?.name || 'CRM WhatsApp User',
+            number: cleanPhone
           };
         }
       });
-
-      this.client.on('disconnected', (reason) => {
-        console.log('WhatsApp client disconnected:', reason);
-        this.clearQrTimeout();
-        this.status = 'DISCONNECTED';
-        this.connectedUser = null;
-        this.qrCodeDataUrl = null;
-        this.client = null;
-        this.cleanupAuthDir();
-      });
-
-      this.client.initialize().catch((err: any) => {
-        console.error('Error during WhatsApp initialization:', err);
-        this.clearQrTimeout();
-        this.status = 'DISCONNECTED';
-        this.lastError = err?.message || 'Failed to launch WhatsApp browser environment';
-        this.client = null;
-      });
     } catch (err: any) {
-      console.error('Failed to construct WhatsApp client:', err);
-      this.clearQrTimeout();
+      console.error('[WhatsAppService] Initialization failed:', err);
       this.status = 'DISCONNECTED';
-      this.lastError = err?.message || 'Failed to instantiate WhatsApp client';
-      this.client = null;
+      this.lastError = err?.message || 'Failed to start WhatsApp socket client';
+      this.sock = null;
     }
   }
 
@@ -253,62 +165,66 @@ class WhatsAppService {
   }
 
   public async sendMessage(phone: string, message: string): Promise<boolean> {
-    if (this.status !== 'CONNECTED' || !this.client) {
-      console.warn('Cannot send message: WhatsApp client is not connected.');
+    if (this.status !== 'CONNECTED' || !this.sock) {
+      console.warn('[WhatsAppService] Cannot send message: WhatsApp client is not connected.');
       return false;
     }
 
     try {
       let cleanNumber = phone.replace(/\D/g, '');
-      if (!cleanNumber.endsWith('@c.us')) {
-        cleanNumber = `${cleanNumber}@c.us`;
+      // Format 10-digit Indian numbers with country code 91
+      if (cleanNumber.length === 10) {
+        cleanNumber = '91' + cleanNumber;
+      } else if (cleanNumber.length === 11 && cleanNumber.startsWith('0')) {
+        cleanNumber = '91' + cleanNumber.slice(1);
       }
 
-      console.log(`Sending WhatsApp message to ${cleanNumber}...`);
-      await this.client.sendMessage(cleanNumber, message);
-      console.log(`WhatsApp message successfully sent to ${cleanNumber}`);
+      const jid = `${cleanNumber}@s.whatsapp.net`;
+      console.log(`[WhatsAppService] Sending WhatsApp message to ${jid}...`);
+      await this.sock.sendMessage(jid, { text: message });
+      console.log(`[WhatsAppService] Successfully delivered message to ${jid}`);
       return true;
-    } catch (error) {
-      console.error('Failed to send WhatsApp message:', error);
+    } catch (error: any) {
+      console.error('[WhatsAppService] Failed to send WhatsApp message:', error);
       return false;
     }
   }
 
   public async disconnect(): Promise<void> {
-    this.clearQrTimeout();
-    if (!this.client) {
-      this.status = 'DISCONNECTED';
-      this.connectedUser = null;
-      this.qrCodeDataUrl = null;
-      this.lastError = null;
-      this.cleanupAuthDir();
-      return;
+    this.isExplicitDisconnect = true;
+
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
     }
 
-    try {
-      console.log('Logging out/destroying WhatsApp client...');
-      await this.client.logout().catch(() => {});
-      await this.client.destroy().catch(() => {});
-    } catch (err) {
-      console.error('Error during client logout/destroy:', err);
-    } finally {
-      this.client = null;
-      this.status = 'DISCONNECTED';
-      this.connectedUser = null;
-      this.qrCodeDataUrl = null;
-      this.lastError = null;
-      this.cleanupAuthDir();
+    if (this.sock) {
+      try {
+        console.log('[WhatsAppService] Logging out and terminating WhatsApp session...');
+        this.sock.ev.removeAllListeners('connection.update');
+        this.sock.ev.removeAllListeners('creds.update');
+        await this.sock.logout().catch(() => {});
+        this.sock.end(undefined);
+      } catch (err) {
+        console.error('[WhatsAppService] Error during socket logout:', err);
+      }
     }
+
+    this.sock = null;
+    this.status = 'DISCONNECTED';
+    this.connectedUser = null;
+    this.qrCodeDataUrl = null;
+    this.lastError = null;
+    this.cleanupAuthDir();
   }
 
   private cleanupAuthDir() {
-    const sessionPath = path.join(this.authDir, 'session-crm-session');
-    if (fs.existsSync(sessionPath)) {
+    if (fs.existsSync(this.authDir)) {
       try {
-        console.log('Cleaning up session directory:', sessionPath);
-        fs.rmSync(sessionPath, { recursive: true, force: true });
+        console.log('[WhatsAppService] Cleaning up session directory:', this.authDir);
+        fs.rmSync(this.authDir, { recursive: true, force: true });
       } catch (err) {
-        console.error('Failed to delete session directory:', err);
+        console.error('[WhatsAppService] Failed to delete session directory:', err);
       }
     }
   }

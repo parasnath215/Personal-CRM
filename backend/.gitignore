@@ -10,3 +10,4 @@ dev.db
 uploads/
 .wwebjs_auth
 .wwebjs_cache
+.baileys_auth
